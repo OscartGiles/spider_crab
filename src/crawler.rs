@@ -1,6 +1,7 @@
 use std::{collections::HashSet, future::Future};
 
 use reqwest::StatusCode;
+use texting_robots::Robot;
 use url::Url;
 
 use crate::parser::{parse_links, AllPages, Page};
@@ -21,15 +22,30 @@ pub struct Crawler<V>
 where
     V: SiteVisitor,
 {
-    site_vistor: V,
+    site_visitor: V,
+    robot: Option<Robot>,
 }
 
 impl<V> Crawler<V>
 where
     V: SiteVisitor,
 {
-    pub fn new(site_vistor: V) -> Self {
-        Self { site_vistor }
+    pub fn new(site_visitor: V, crawler_agent: &str, robot_txt: Option<&str>) -> Self {
+        let robot = robot_txt.map_or(None, |txt| {
+            Some(Robot::new(crawler_agent, txt.as_bytes()).unwrap())
+        });
+
+        Self {
+            site_visitor,
+            robot,
+        }
+    }
+
+    /// Check if the crawler can visit a URL. If no [Robot] is provided assume we can visit any URL.
+    fn can_visit(&self, url: &Url) -> bool {
+        self.robot
+            .as_ref()
+            .map_or(true, |robot| robot.allowed(url.as_str()))
     }
 
     pub async fn crawl(mut self, url: Url) -> AllPages {
@@ -37,14 +53,16 @@ where
         let mut visited: HashSet<Url> = HashSet::new();
         let mut to_visit: Vec<Url> = Vec::new();
 
-        to_visit.push(url);
+        if self.can_visit(&url) {
+            to_visit.push(url);
+        }
 
         while let Some(next_url) = to_visit.pop() {
             let not_visited = visited.insert(next_url.clone());
 
             if not_visited {
                 let mut recovered_links = Vec::new();
-                let page_response = self.site_vistor.visit(next_url.clone()).await;
+                let page_response = self.site_visitor.visit(next_url.clone()).await;
                 let page = parse_links(page_response);
 
                 for link in page.links.iter() {
@@ -53,7 +71,11 @@ where
                 pages.push(page);
 
                 for link in recovered_links {
-                    to_visit.push(link);
+                    if self.can_visit(&link) {
+                        to_visit.push(link);
+                    } else {
+                        println!("DISALLOWED: {}", link);
+                    }
                 }
             }
         }

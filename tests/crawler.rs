@@ -81,7 +81,7 @@ async fn test_visitor() {
 
     // Given: We crawl the (mock) Monzo website
     let mock_visitor = MockUrlVisitor::new();
-    let crawler = Crawler::new(mock_visitor.clone());
+    let crawler = Crawler::new(mock_visitor.clone(), "monzo-crawler", None);
     let root_url = Url::parse("https://monzo.com").unwrap();
 
     // When we crawl starting at the root URL
@@ -106,4 +106,49 @@ async fn test_visitor() {
         .all(|(_, &count)| count == 1));
 
     println!("Visited pages:\n\n{}", visited_pages);
+}
+
+#[tokio::test]
+async fn test_visitor_with_robots() {
+    // Expect the crawler to visit these URLs
+    let expected_urls = HashSet::from([
+        "https://monzo.com/",
+        "https://monzo.com/about",
+        "https://monzo.com/cost",
+        // "https://monzo.com/cost-inner",
+    ])
+    .iter()
+    .map(|&url| Url::parse(url).unwrap())
+    .collect();
+
+    let robots_txt = r"User-Agent: *
+Disallow: /cost-inner";
+
+    // Given: We crawl the (mock) Monzo website
+    let mock_visitor = MockUrlVisitor::new();
+    let crawler = Crawler::new(mock_visitor.clone(), "monzo-crawler", Some(robots_txt));
+    let root_url = Url::parse("https://monzo.com").unwrap();
+
+    // When we crawl starting at the root URL
+    let visited_pages = crawler.crawl(root_url).await;
+
+    let visited_urls = visited_pages
+        .0
+        .iter()
+        .map(|page| page.url.clone())
+        .collect::<HashSet<Url>>();
+
+    // Then: The crawler reports that it visited the expected URLs
+    assert_eq!(visited_urls, expected_urls);
+
+    // And: The mock page visitor reports that it visited the expected URLs
+    assert_eq!(mock_visitor.visited_urls(), expected_urls);
+
+    // And: The mock visitor reports that it visited each URL exactly once
+    assert!(mock_visitor
+        .visited_urls_with_counts()
+        .iter()
+        .all(|(_, &count)| count == 1));
+
+    println!("Visited pages\n{}", visited_pages);
 }
