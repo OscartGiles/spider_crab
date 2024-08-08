@@ -1,3 +1,4 @@
+mod client;
 mod crawler;
 mod parser;
 pub use crawler::{Crawler, PageContent, SiteVisitor};
