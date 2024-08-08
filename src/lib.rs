@@ -1,7 +1,6 @@
 mod crawler;
 mod parser;
 pub use crawler::Crawler;
-pub use parser::parse_links;
 
 #[cfg(test)]
 mod test {

@@ -1,11 +1,20 @@
 use std::{collections::HashSet, future::Future};
 
+use reqwest::StatusCode;
 use url::Url;
 
-use crate::parse_links;
+use crate::parser::{parse_links, AllPages, Page};
 
+/// Contents of a page.
+pub(crate) struct PageContent {
+    pub(crate) url: Url,
+    pub(crate) status_code: StatusCode,
+    pub(crate) content: String,
+}
+
+/// A trait for visiting a site and returning the contents of a page.
 pub trait SiteVisitor {
-    fn visit(&mut self, url: Url) -> impl Future<Output = String> + Send;
+    fn visit(&mut self, url: Url) -> impl Future<Output = PageContent> + Send;
 }
 
 pub struct Crawler<V>
@@ -23,7 +32,8 @@ where
         Self { site_vistor }
     }
 
-    pub async fn crawl(mut self, url: Url) -> HashSet<Url> {
+    pub async fn crawl(mut self, url: Url) -> AllPages {
+        let mut pages: Vec<Page> = Vec::new();
         let mut visited: HashSet<Url> = HashSet::new();
         let mut to_visit: Vec<Url> = Vec::new();
 
@@ -34,13 +44,13 @@ where
 
             if not_visited {
                 let mut recovered_links = Vec::new();
-                let content = self.site_vistor.visit(next_url.clone()).await;
+                let page_response = self.site_vistor.visit(next_url.clone()).await;
+                let page = parse_links(page_response);
 
-                let page_links = parse_links(&content, &next_url);
-
-                for link in page_links {
-                    recovered_links.push(link);
+                for link in page.links.iter() {
+                    recovered_links.push(link.clone());
                 }
+                pages.push(page);
 
                 for link in recovered_links {
                     to_visit.push(link);
@@ -48,13 +58,13 @@ where
             }
         }
 
-        visited
+        AllPages(pages)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::SiteVisitor;
+    use super::{PageContent, SiteVisitor};
     use crate::crawler::Crawler;
     use std::{
         collections::{HashMap, HashSet},
@@ -65,13 +75,14 @@ mod tests {
     /// A mock url visitor that returns a string based on the URL.
     /// Provides a count of how many times a URL has been visited, so we can assert that we
     /// only visit each URL once.
+    /// Clones share the visited count by using an Arc internally.
     #[derive(Clone)]
     struct MockUrlVisitor {
         visited: Arc<RwLock<HashMap<Url, u32>>>,
     }
 
     impl SiteVisitor for MockUrlVisitor {
-        async fn visit(&mut self, url: Url) -> String {
+        async fn visit(&mut self, url: Url) -> PageContent {
             // Increment the number of times the URL has been visited
             {
                 let mut gaurd = self.visited.write().expect("Could not acquire lock");
@@ -81,10 +92,26 @@ mod tests {
 
             // Route urls to responses.
             match url.as_str() {
-                "https://monzo.com/" => r#"<a href="/about"></a> <a href="/cost"></a>"#.into(),
-                "https://monzo.com/about" => r#"<a href="/about"></a> <a href="/cost"></a>"#.into(),
-                "https://monzo.com/cost" => r#"<a href="/cost-inner"></a>"#.into(),
-                "https://monzo.com/cost-inner" => r#"<p></p>"#.into(),
+                "https://monzo.com/" => PageContent {
+                    content: r#"<a href="/about"></a> <a href="/cost"></a>"#.into(),
+                    status_code: reqwest::StatusCode::OK,
+                    url,
+                },
+                "https://monzo.com/about" => PageContent {
+                    content: r#"<a href="/about"></a> <a href="/cost"></a>"#.into(),
+                    status_code: reqwest::StatusCode::ACCEPTED,
+                    url,
+                },
+                "https://monzo.com/cost" => PageContent {
+                    content: r#"<a href="/cost-inner"></a>"#.into(),
+                    status_code: reqwest::StatusCode::OK,
+                    url,
+                },
+                "https://monzo.com/cost-inner" => PageContent {
+                    content: r#"<p></p>"#.into(),
+                    status_code: reqwest::StatusCode::OK,
+                    url,
+                },
                 _ => panic!("Unexpected URL: {}", url),
             }
         }
@@ -125,10 +152,16 @@ mod tests {
         let root_url = Url::parse("https://monzo.com").unwrap();
 
         // When we crawl starting at the root URL
-        let visited = crawler.crawl(root_url).await;
+        let visited_pages = crawler.crawl(root_url).await;
+
+        let visited_urls = visited_pages
+            .0
+            .iter()
+            .map(|page| page.url.clone())
+            .collect::<HashSet<Url>>();
 
         // Then: The crawler reports that it visited the expected URLs
-        assert_eq!(visited, expected_urls);
+        assert_eq!(visited_urls, expected_urls);
 
         // And: The mock page visitor reports that it visited the expected URLs
         assert_eq!(mock_visitor.visited_urls(), expected_urls);
@@ -138,5 +171,7 @@ mod tests {
             .visited_urls_with_counts()
             .iter()
             .all(|(_, &count)| count == 1));
+
+        println!("Visited pages:\n\n{}", visited_pages);
     }
 }

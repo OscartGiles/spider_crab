@@ -1,16 +1,56 @@
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    fmt::{Debug, Display},
+};
 
+use owo_colors::OwoColorize;
+use reqwest::StatusCode;
 use scraper::{Html, Selector};
 use url::Url;
+
+use crate::crawler::PageContent;
+
+#[derive(Debug)]
+pub struct Page {
+    pub url: Url,
+    pub status_code: StatusCode,
+    pub links: HashSet<Url>,
+}
+
+pub struct AllPages(pub Vec<Page>);
+
+impl Display for AllPages {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for page in self.0.iter() {
+            writeln!(
+                f,
+                "{} ({})",
+                page.url.as_str().green(),
+                page.status_code.green()
+            )?;
+
+            if page.links.is_empty() {
+                writeln!(f, "  --> {}", "No links found".cyan())?;
+            } else {
+                for link in page.links.iter() {
+                    writeln!(f, "  --> {}", link.as_str().blue())?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
 
 /// Get all unique links that are from the same domain as the `page_url`.
 /// Excludes any links that do not use http or https scheme.
 /// Fragments are not treated as unique links.
-pub fn parse_links(html_content: &str, page_url: &Url) -> HashSet<Url> {
-    let document = Html::parse_document(html_content);
+pub(crate) fn parse_links(page_content: PageContent) -> Page {
+    let document = Html::parse_document(&page_content.content);
     let selector = Selector::parse("a").unwrap();
 
-    document
+    let page_url = page_content.url.clone();
+
+    let links = document
         .select(&selector)
         .filter(|a| a.value().attr("href").is_some())
         .map(|a| {
@@ -32,11 +72,19 @@ pub fn parse_links(html_content: &str, page_url: &Url) -> HashSet<Url> {
             href.set_fragment(None);
             href
         })
-        .collect()
+        .collect();
+
+    Page {
+        url: page_url,
+        status_code: page_content.status_code,
+        links,
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::crawler::PageContent;
+
     use super::parse_links;
     use std::{collections::HashSet, fs};
     use url::Url;
@@ -62,8 +110,13 @@ mod tests {
         <a href="https://sudomain.monzo.com/hi">don't include subdomains</a>
     </div>
 "#;
+        let page = PageContent {
+            url: Url::parse("https://monzo.com").unwrap(),
+            status_code: reqwest::StatusCode::OK,
+            content: html.to_string(),
+        };
 
-        let links = parse_links(html, &Url::parse("https://monzo.com").unwrap());
+        let links = parse_links(page).links;
 
         let expected_links: HashSet<Url> = HashSet::from([
             "https://monzo.com/hi",
@@ -82,7 +135,13 @@ mod tests {
     fn test_parse_monzo() {
         let html = fs::read_to_string("./tests/test_data/monzo/home.html").unwrap();
 
-        let links = parse_links(&html, &Url::parse("https://monzo.com").unwrap());
+        let page = PageContent {
+            url: Url::parse("https://monzo.com").unwrap(),
+            status_code: reqwest::StatusCode::OK,
+            content: html,
+        };
+
+        let links = parse_links(page).links;
 
         for element in links {
             println!("{}", element.as_str());
