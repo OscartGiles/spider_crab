@@ -1,7 +1,6 @@
 mod crawler;
 mod parser;
-pub use crawler::Crawler;
-
+pub use crawler::{Crawler, PageContent, SiteVisitor};
 #[cfg(test)]
 mod test {
     use std::time::Duration;
