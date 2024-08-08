@@ -56,8 +56,13 @@ impl MockUrlVisitor {
         }
     }
 
-    fn visited_urls_with_counts(&self) -> HashMap<Url, u32> {
-        self.visited.read().expect("Could not acquire lock").clone()
+    fn visited_urls_once(&self) -> bool {
+        self.visited
+            .read()
+            .expect("Could not acquire lock")
+            .clone()
+            .iter()
+            .all(|(_, &count)| count == 1)
     }
 
     fn visited_urls(&self) -> HashSet<Url> {
@@ -100,10 +105,7 @@ async fn test_visitor() {
     assert_eq!(mock_visitor.visited_urls(), expected_urls);
 
     // And: The mock visitor reports that it visited each URL exactly once
-    assert!(mock_visitor
-        .visited_urls_with_counts()
-        .iter()
-        .all(|(_, &count)| count == 1));
+    assert!(mock_visitor.visited_urls_once());
 
     println!("Visited pages:\n\n{}", visited_pages);
 }
@@ -145,10 +147,7 @@ Disallow: /cost-inner";
     assert_eq!(mock_visitor.visited_urls(), expected_urls);
 
     // And: The mock visitor reports that it visited each URL exactly once
-    assert!(mock_visitor
-        .visited_urls_with_counts()
-        .iter()
-        .all(|(_, &count)| count == 1));
+    assert!(mock_visitor.visited_urls_once());
 
     println!("Visited pages\n{}", visited_pages);
 }
