@@ -31,9 +31,7 @@ where
     V: SiteVisitor,
 {
     pub fn new(site_visitor: V, crawler_agent: &str, robot_txt: Option<&str>) -> Self {
-        let robot = robot_txt.map_or(None, |txt| {
-            Some(Robot::new(crawler_agent, txt.as_bytes()).unwrap())
-        });
+        let robot = robot_txt.map(|txt| Robot::new(crawler_agent, txt.as_bytes()).unwrap());
 
         Self {
             site_visitor,
