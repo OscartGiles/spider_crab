@@ -59,7 +59,7 @@ impl Default for RetryTooManyRequestsMiddleware {
 
 #[async_trait::async_trait]
 impl Middleware for RetryTooManyRequestsMiddleware {
-    #[tracing::instrument(name = "slow_down_requests", skip_all)]
+    #[tracing::instrument(name = "SlowDownRequestsMiddleware", skip_all)]
     async fn handle(
         &self,
         req: Request,
@@ -76,6 +76,8 @@ impl Middleware for RetryTooManyRequestsMiddleware {
             } else {
                 *self.retry_after.write().await = None;
             }
+        } else {
+            info!("Not slowing down requests.");
         }
 
         let result = next.clone().run(req, extensions).await;
@@ -140,7 +142,7 @@ impl MaxConcurrentMiddleware {
 /// A middleware that limits the number of concurrent requests being made by the client.
 #[async_trait::async_trait]
 impl Middleware for MaxConcurrentMiddleware {
-    #[tracing::instrument(skip(req, extensions, next))]
+    #[tracing::instrument(name = "MaxConcurrentMiddleware", skip(req, extensions, next))]
     async fn handle(
         &self,
         req: Request,

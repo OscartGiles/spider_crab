@@ -44,6 +44,7 @@ impl Display for AllPages {
 /// Get all unique links that are from the same domain as the `page_url`.
 /// Excludes any links that do not use http or https scheme.
 /// Fragments are not treated as unique links.
+#[tracing::instrument(skip(page_content))]
 pub(crate) fn parse_links(page_content: PageContent) -> Page {
     let document = Html::parse_document(&page_content.content);
     let selector = Selector::parse("a").unwrap();
@@ -59,15 +60,13 @@ pub(crate) fn parse_links(page_content: PageContent) -> Page {
                 .expect("href not found. This is a bug. None's should be filtered out.")
         })
         .filter(|href| !href.starts_with('#'))
-        .map(|href| {
+        .flat_map(|href| {
             if href.starts_with('/') {
                 page_url.join(href)
             } else {
                 Url::parse(href)
             }
         })
-        .filter(|url| url.is_ok())
-        .map(|url| url.unwrap())
         .filter(|url| url.domain() == page_url.domain())
         .filter(|url| url.scheme() == "https" || url.scheme() == "http")
         .map(|mut href| {

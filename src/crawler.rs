@@ -2,6 +2,7 @@ use std::{collections::HashSet, future::Future};
 
 use reqwest::StatusCode;
 use texting_robots::Robot;
+use tracing::info;
 use url::Url;
 
 use crate::parser::{parse_links, AllPages, Page};
@@ -46,6 +47,13 @@ where
             .map_or(true, |robot| robot.allowed(url.as_str()))
     }
 
+    #[tracing::instrument(name = "visitAndParse", skip(self))]
+    async fn visit_and_parse(&mut self, url: Url) -> Page {
+        let page_response = self.site_visitor.visit(url).await;
+        parse_links(page_response)
+    }
+
+    #[tracing::instrument(skip(self, url))]
     pub async fn crawl(mut self, url: Url) -> AllPages {
         let mut pages: Vec<Page> = Vec::new();
         let mut visited: HashSet<Url> = HashSet::new();
@@ -55,13 +63,15 @@ where
             to_visit.push(url);
         }
 
+        info!("Starting to crawl");
+
         while let Some(next_url) = to_visit.pop() {
             let not_visited = visited.insert(next_url.clone());
 
             if not_visited {
                 let mut recovered_links = Vec::new();
-                let page_response = self.site_visitor.visit(next_url.clone()).await;
-                let page = parse_links(page_response);
+
+                let page = self.visit_and_parse(next_url.clone()).await;
 
                 for link in page.links.iter() {
                     recovered_links.push(link.clone());
