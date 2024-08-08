@@ -61,11 +61,13 @@ pub(crate) fn parse_links(page_content: PageContent) -> Page {
         .filter(|href| !href.starts_with('#'))
         .map(|href| {
             if href.starts_with('/') {
-                page_url.join(href).unwrap()
+                page_url.join(href)
             } else {
-                Url::parse(href).unwrap()
+                Url::parse(href)
             }
         })
+        .filter(|url| url.is_ok())
+        .map(|url| url.unwrap())
         .filter(|url| url.domain() == page_url.domain())
         .filter(|url| url.scheme() == "https" || url.scheme() == "http")
         .map(|mut href| {
