@@ -1,13 +1,45 @@
 use http::{Extensions, StatusCode};
 use reqwest::{Request, Response};
-use reqwest_middleware::{Middleware, Next, Result};
+use reqwest_middleware::{ClientWithMiddleware, Middleware, Next, Result};
 use std::{
     fmt::{self},
     sync::Arc,
     time::{Duration, SystemTime},
 };
 use tokio::sync::Semaphore;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
+
+use crate::{PageContent, SiteVisitor};
+
+/// A Visitor for [ClientWithMiddleware].
+#[derive(Clone, Debug)]
+pub struct ClientWithMiddlewareVisitor {
+    client: ClientWithMiddleware,
+}
+
+impl ClientWithMiddlewareVisitor {
+    pub fn new(client: ClientWithMiddleware) -> Self {
+        Self { client }
+    }
+}
+
+impl SiteVisitor for ClientWithMiddlewareVisitor {
+    async fn visit(&mut self, url: url::Url) -> PageContent {
+        let response = self.client.get(url.as_str()).send().await.unwrap();
+        let status_code = response.status();
+        let mut headers = response.headers().clone();
+
+        let content_type = headers.remove("Content-Type");
+        let content = response.text().await.unwrap();
+
+        PageContent {
+            content,
+            status_code,
+            url,
+            content_type,
+        }
+    }
+}
 
 /// A middleware that delays the next request if a `Retry-After` header is received.
 /// It does not retry the requests on its own. It can be used in conjunction with a retry middleware (see example).
@@ -35,6 +67,7 @@ use tracing::{debug, info, warn};
 /// ````
 pub struct RetryTooManyRequestsMiddleware {
     retry_after: tokio::sync::RwLock<Option<SystemTime>>,
+    default_retry_after: Duration,
 }
 
 impl std::fmt::Debug for RetryTooManyRequestsMiddleware {
@@ -46,15 +79,11 @@ impl std::fmt::Debug for RetryTooManyRequestsMiddleware {
 }
 
 impl RetryTooManyRequestsMiddleware {
-    pub fn new() -> Self {
+    pub fn new(default_retry_after: Duration) -> Self {
         Self {
             retry_after: tokio::sync::RwLock::new(None),
+            default_retry_after,
         }
-    }
-}
-impl Default for RetryTooManyRequestsMiddleware {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -72,7 +101,7 @@ impl Middleware for RetryTooManyRequestsMiddleware {
         if let Some(retry_after) = retry_after {
             let now = SystemTime::now();
             if let Ok(duration) = retry_after.duration_since(now) {
-                info!("Sleeping for {:?}", duration);
+                debug!("Sleeping for {:?}", duration);
                 tokio::time::sleep(duration).await;
             } else {
                 *self.retry_after.write().await = None;
@@ -83,13 +112,13 @@ impl Middleware for RetryTooManyRequestsMiddleware {
 
         if let Ok(resp) = result.as_ref() {
             if resp.status() == StatusCode::TOO_MANY_REQUESTS {
+                debug!("Server requested slowdown.");
                 if let Some(header) = resp.headers().get(reqwest::header::RETRY_AFTER) {
-                    info!("Server requested slowdown.");
                     let retry_after = match header.to_str() {
                         Ok(s) => match s.parse::<u64>() {
                             Ok(mut seconds) => {
                                 if seconds > 60 {
-                                    warn!("Retry-After header is greater than 60 seconds.");
+                                    debug!("Retry-After header is greater than 60 seconds.");
                                     seconds = 60;
                                 }
                                 let retry_after = SystemTime::now() + Duration::from_secs(seconds);
@@ -97,7 +126,7 @@ impl Middleware for RetryTooManyRequestsMiddleware {
                                 Some(retry_after)
                             }
                             Err(e) => {
-                                warn!(
+                                debug!(
                                     "Could not parse Retry-After header as integer: {}. Error: {}",
                                     s, e
                                 );
@@ -105,12 +134,20 @@ impl Middleware for RetryTooManyRequestsMiddleware {
                             }
                         },
                         Err(e) => {
-                            warn!("Invalid Retry-After header. Contains non ASCII characters. Error: {}", e);
+                            debug!("Invalid Retry-After header. Contains non ASCII characters. Error: {}", e);
                             None
                         }
                     };
 
-                    *self.retry_after.write().await = retry_after;
+                    if retry_after.is_none() {
+                        *self.retry_after.write().await =
+                            Some(SystemTime::now() + self.default_retry_after);
+                    } else {
+                        *self.retry_after.write().await = retry_after;
+                    }
+                } else {
+                    *self.retry_after.write().await =
+                        Some(SystemTime::now() + self.default_retry_after);
                 }
             }
         }
@@ -154,7 +191,7 @@ impl Middleware for MaxConcurrentMiddleware {
             .acquire_owned()
             .await
             .expect("Could not acquire semaphore because it was closed. This is a bug."); // Permit released on drop.
-        info!(
+        debug!(
             "Acquired semaphore permit. Available permits: {}",
             self.semaphore.available_permits()
         );
@@ -162,7 +199,7 @@ impl Middleware for MaxConcurrentMiddleware {
         let res = next.clone().run(req, extensions).await;
 
         drop(_permit);
-        info!("dropped permit: {}", self.semaphore.available_permits());
+        debug!("dropped permit: {}", self.semaphore.available_permits());
         res
     }
 }

@@ -4,7 +4,7 @@ use http::HeaderValue;
 use reqwest::StatusCode;
 use texting_robots::Robot;
 use tokio::task::JoinSet;
-use tracing::{info, info_span, Instrument};
+use tracing::{debug, Instrument};
 use url::Url;
 
 use crate::parser::{assume_html, parse_links, AllPages, Page};
@@ -55,7 +55,7 @@ where
     }
 
     async fn visit_and_parse(mut site_visitor: V, url: Url) -> Page {
-        info!("Visiting and parsing {}", url);
+        debug!("Visiting and parsing {}", url);
         let page_response = site_visitor.visit(url).await;
 
         tokio::task::spawn_blocking(move || parse_links(&page_response))
@@ -68,7 +68,7 @@ where
         let mut pages: Vec<Page> = Vec::new();
         let mut visited: HashSet<Url> = HashSet::new();
 
-        info!("Starting to crawl");
+        debug!("Starting to crawl");
 
         if self.can_visit(&url) {
             visited.insert(url.clone());
@@ -78,13 +78,8 @@ where
                 .spawn(Self::visit_and_parse(visitor, url).instrument(tracing::Span::current()));
         }
 
-        let mut counter = 0;
-
         while let Some(page) = self.tasks.join_next().await {
             let page = page.expect("Please handle me!!"); //ToDO: Handle errors
-
-            counter += 1;
-            println!("Counter: {}", counter);
 
             let mut recovered_links = Vec::new();
             for link in page.links.iter() {
@@ -105,7 +100,7 @@ where
                         );
                     }
                 } else {
-                    info!("Robots.txt - Ignored {} ", link);
+                    debug!("Robots.txt - Ignored {} ", link);
                 }
             }
         }

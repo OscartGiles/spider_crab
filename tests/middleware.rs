@@ -7,7 +7,7 @@ use http::StatusCode;
 
 use reqwest_middleware::ClientBuilder;
 use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
-use tracing::{error, info};
+use tracing::{debug, error};
 
 use monzo_crawler::client_middleware::RetryTooManyRequestsMiddleware;
 use tracing_test::traced_test;
@@ -28,7 +28,7 @@ async fn test_too_many_request_middleware() {
             .unwrap(),
     )
     .with(RetryTransientMiddleware::new_with_policy(retry_policy))
-    .with(RetryTooManyRequestsMiddleware::new())
+    .with(RetryTooManyRequestsMiddleware::new(Duration::from_secs(1)))
     .build();
 
     struct AlreadyHitInner {
@@ -78,7 +78,7 @@ async fn test_too_many_request_middleware() {
                         );
                         return false;
                     } else {
-                        info!("Request respected Retry-After.");
+                        debug!("Request respected Retry-After.");
                     }
                 }
                 guard.not_before = Some(SystemTime::now() + guard.delay);

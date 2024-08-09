@@ -1,53 +1,78 @@
+use std::time::Duration;
+
 use monzo_crawler::{
     client_middleware::{MaxConcurrentMiddleware, RetryTooManyRequestsMiddleware},
-    Crawler, PageContent, SiteVisitor,
+    ClientWithMiddlewareVisitor, Crawler,
 };
 use opentelemetry::{trace::TracerProvider as _, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{runtime::Tokio, trace::Config, Resource};
-use owo_colors::OwoColorize;
-// use reqwest::Client;
+
+use owo_colors::{self, OwoColorize};
+use reqwest::redirect;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
 use reqwest_tracing::TracingMiddleware;
+use texting_robots::get_robots_url;
 use tokio::time::Instant;
-use tracing::{debug, info};
-
 use url::Url;
 
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-#[derive(Clone, Debug)]
-struct ClientWithMiddlewareVisitor {
-    client: ClientWithMiddleware,
+static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
+
+/// A client with middleware for obtaining Robots.txt files.
+/// Roughly follows https://github.com/Smerity/texting_robots?tab=readme-ov-file#crawling-considerations
+fn robots_client() -> ClientWithMiddleware {
+    let retry_policy = ExponentialBackoff::builder().build_with_max_retries(5);
+
+    ClientBuilder::new(
+        reqwest::Client::builder()
+            .user_agent(APP_USER_AGENT)
+            .redirect(redirect::Policy::limited(10))
+            .build()
+            .unwrap(),
+    )
+    .with(RetryTransientMiddleware::new_with_policy(retry_policy))
+    .with(RetryTooManyRequestsMiddleware::new(Duration::from_secs(5)))
+    .with(TracingMiddleware::default())
+    .build()
 }
 
-impl ClientWithMiddlewareVisitor {
-    fn new(client: ClientWithMiddleware) -> Self {
-        Self { client }
-    }
+fn crawler_client(
+    max_retries: u32,
+    too_many_requests_delay: Duration,
+    max_concurrent_connections: usize,
+) -> ClientWithMiddleware {
+    let retry_policy = ExponentialBackoff::builder()
+        .jitter(reqwest_retry::Jitter::Bounded)
+        .build_with_max_retries(max_retries);
+
+    ClientBuilder::new(
+        reqwest::Client::builder()
+            .user_agent(APP_USER_AGENT)
+            .redirect(redirect::Policy::limited(10))
+            .build()
+            .unwrap(),
+    )
+    .with(RetryTransientMiddleware::new_with_policy(retry_policy))
+    .with(RetryTooManyRequestsMiddleware::new(too_many_requests_delay))
+    .with(MaxConcurrentMiddleware::new(max_concurrent_connections))
+    .with(TracingMiddleware::default())
+    .build()
 }
 
-impl SiteVisitor for ClientWithMiddlewareVisitor {
-    async fn visit(&mut self, url: url::Url) -> PageContent {
-        let response = self.client.get(url.as_str()).send().await.unwrap();
-        let status_code = response.status();
-        let mut headers = response.headers().clone();
+/// Try to get a robots.txt file for a given URL, returning None if it doesn't exist.
+async fn get_robots(root_url: &Url) -> anyhow::Result<Option<String>> {
+    let rclient = robots_client();
+    let robots_url = get_robots_url(root_url.as_str())?;
 
-        let content_type = headers.remove("Content-Type");
-        let content = response.text().await.unwrap();
-
-        PageContent {
-            content,
-            status_code,
-            url,
-            content_type,
-        }
-    }
+    let res = rclient.get(robots_url.as_str()).send().await?;
+    let robots = res.text().await;
+    Ok(robots.ok())
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn configure_tracing() {
     let tracer = opentelemetry_otlp::new_pipeline()
         .tracing()
         .with_exporter(
@@ -58,13 +83,13 @@ async fn main() -> anyhow::Result<()> {
         .with_trace_config(
             Config::default().with_resource(Resource::new(vec![KeyValue::new(
                 "service.name",
-                "monzo_crawler",
+                APP_USER_AGENT,
             )])),
         )
         // .install_simple()
         .install_batch(Tokio)
         .unwrap()
-        .tracer("monzo_crawler");
+        .tracer(APP_USER_AGENT);
 
     // log level filtering here
     let filter_layer = EnvFilter::try_from_default_env()
@@ -82,41 +107,23 @@ async fn main() -> anyhow::Result<()> {
         .with(fmt_layer)
         .with(otel_layer)
         .init();
+}
 
-    let retry_policy = ExponentialBackoff::builder().build_with_max_retries(2);
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    configure_tracing();
 
-    let client = ClientBuilder::new(
-        reqwest::Client::builder()
-            .user_agent("monzo_crawler")
-            .build()
-            .unwrap(),
-    )
-    .with(RetryTransientMiddleware::new_with_policy(retry_policy))
-    .with(RetryTooManyRequestsMiddleware::new())
-    .with(MaxConcurrentMiddleware::new(1000))
-    .with(TracingMiddleware::default())
-    .build();
-
+    let client = crawler_client(5, Duration::from_secs(5), 1000);
     let reqwest_visitor = ClientWithMiddlewareVisitor::new(client);
 
-    let robots = r#"User-agent: *
-Disallow: /docs/
-Disallow: /referral/
-Disallow: /-staging-referral/
-Disallow: /install/
-Disallow: /blog/authors/
-Disallow: /-deeplinks/
-"#;
-
-    let crawler = Crawler::new(reqwest_visitor, "monzo-crawler", Some(robots));
+    let root_url = Url::parse("https://monzo.com")?;
+    let robots_txt = get_robots(&root_url).await?;
+    let crawler = Crawler::new(reqwest_visitor, APP_USER_AGENT, robots_txt.as_deref());
 
     let start = Instant::now();
-    let res = crawler
-        .crawl(Url::parse("https://monzo.com").unwrap())
-        .await;
-    let duration = start.elapsed();
-    info!("Crawling complete");
+    let res = crawler.crawl(root_url).await;
 
+    let duration = start.elapsed();
     for page in res.0.iter() {
         println!("{}", page.url);
     }
