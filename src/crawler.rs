@@ -88,7 +88,7 @@ where
         }
 
         while let Some(page) = self.tasks.join_next().await {
-            let page = page.expect("Please handle me!!"); //ToDO: Handle errors
+            let page = page.unwrap(); //ToDO: Handle errors
 
             // Check if we have reached the max pages
             if Some(page_count) == self.max_pages {
@@ -165,9 +165,9 @@ where
     }
 
     /// Provide a robot_txt file for the crawler. The crawler will not visit pages denied in the robot_txt file.
-    pub fn with_robot(mut self, robot_txt: &str, crawler_agent: &str) -> Self {
-        self.robot = Some(Robot::new(crawler_agent, robot_txt.as_bytes()).unwrap());
-        self
+    pub fn with_robot(mut self, robot_txt: &str, crawler_agent: &str) -> anyhow::Result<Self> {
+        self.robot = Some(Robot::new(crawler_agent, robot_txt.as_bytes())?);
+        Ok(self)
     }
 
     /// Set the maximum time the crawler will run for.

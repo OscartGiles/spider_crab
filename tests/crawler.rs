@@ -138,6 +138,7 @@ Disallow: /cost-inner";
     let mock_visitor = MockUrlVisitor::new();
     let crawler = CrawlerBuilder::new(mock_visitor.clone())
         .with_robot(robots_txt, "test-agent")
+        .expect("Could not parse robots.txt")
         .build();
     let root_url = Url::parse("https://monzo.com").unwrap();
 

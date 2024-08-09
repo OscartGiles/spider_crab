@@ -36,3 +36,7 @@ debug = true
 [[bench]]
 name = "html_parser"
 harness = false
+
+[lints.clippy]
+unwrap_used = "warn"
+panic = "warn"

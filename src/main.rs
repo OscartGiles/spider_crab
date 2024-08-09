@@ -31,48 +31,46 @@ static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_P
 
 /// A client with middleware for obtaining Robots.txt files.
 /// Roughly follows https://github.com/Smerity/texting_robots?tab=readme-ov-file#crawling-considerations
-fn robots_client() -> ClientWithMiddleware {
+fn robots_client() -> anyhow::Result<ClientWithMiddleware> {
     let retry_policy = ExponentialBackoff::builder().build_with_max_retries(5);
 
-    ClientBuilder::new(
+    Ok(ClientBuilder::new(
         reqwest::Client::builder()
             .user_agent(APP_USER_AGENT)
             .redirect(redirect::Policy::limited(10))
-            .build()
-            .unwrap(),
+            .build()?,
     )
     .with(RetryTransientMiddleware::new_with_policy(retry_policy))
     .with(RetryTooManyRequestsMiddleware::new(Duration::from_secs(5)))
     .with(TracingMiddleware::default())
-    .build()
+    .build())
 }
 
 fn crawler_client(
     max_retries: u32,
     too_many_requests_delay: Duration,
     max_concurrent_connections: usize,
-) -> ClientWithMiddleware {
+) -> anyhow::Result<ClientWithMiddleware> {
     let retry_policy = ExponentialBackoff::builder()
         .jitter(reqwest_retry::Jitter::Bounded)
         .build_with_max_retries(max_retries);
 
-    ClientBuilder::new(
+    Ok(ClientBuilder::new(
         reqwest::Client::builder()
             .user_agent(APP_USER_AGENT)
             .redirect(redirect::Policy::limited(10))
-            .build()
-            .unwrap(),
+            .build()?,
     )
     .with(RetryTransientMiddleware::new_with_policy(retry_policy))
     .with(RetryTooManyRequestsMiddleware::new(too_many_requests_delay))
     .with(MaxConcurrentMiddleware::new(max_concurrent_connections))
     .with(TracingMiddleware::default())
-    .build()
+    .build())
 }
 
 /// Try to get a robots.txt file for a given URL, returning None if it doesn't exist.
 async fn get_robots(root_url: &Url) -> anyhow::Result<String> {
-    let rclient = robots_client();
+    let rclient = robots_client()?;
     let robots_url = get_robots_url(root_url.as_str())?;
 
     let res = rclient.get(robots_url.as_str()).send().await?;
@@ -105,7 +103,7 @@ async fn write_links_to_file(all_pages: &AllPages, file: &Path) -> anyhow::Resul
 }
 
 /// Configure tracing with the given OTL endpoint.
-fn configure_tracing(otl_endpoint: Url) -> TracerProvider {
+fn configure_tracing(otl_endpoint: Url) -> anyhow::Result<TracerProvider> {
     let provider = opentelemetry_otlp::new_pipeline()
         .tracing()
         .with_exporter(
@@ -119,14 +117,11 @@ fn configure_tracing(otl_endpoint: Url) -> TracerProvider {
                 APP_USER_AGENT,
             )])),
         )
-        .install_batch(Tokio)
-        .unwrap();
+        .install_batch(Tokio)?;
 
     let tracer = provider.tracer(APP_USER_AGENT);
 
-    let filter_layer = EnvFilter::try_from_default_env()
-        .or_else(|_| EnvFilter::try_new("info"))
-        .unwrap();
+    let filter_layer = EnvFilter::try_from_default_env().or_else(|_| EnvFilter::try_new("info"))?;
 
     let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 
@@ -135,7 +130,7 @@ fn configure_tracing(otl_endpoint: Url) -> TracerProvider {
         .with(otel_layer)
         .init();
 
-    provider
+    Ok(provider)
 }
 
 #[tokio::main]
@@ -143,15 +138,20 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     let trace_provider = cli.otl_endpoint.map(configure_tracing);
+    let trace_provider = if let Some(provider) = trace_provider {
+        Some(provider?)
+    } else {
+        None
+    };
 
-    let client = crawler_client(5, Duration::from_secs(5), cli.max_concurrent_connections);
+    let client = crawler_client(5, Duration::from_secs(5), cli.max_concurrent_connections)?;
     let reqwest_visitor = ClientWithMiddlewareVisitor::new(client);
 
     // Build a crawler
     let mut crawler_builder = CrawlerBuilder::new(reqwest_visitor);
     if let Ok(robots_txt) = get_robots(&cli.url).await {
         if !cli.ignore_robots {
-            crawler_builder = crawler_builder.with_robot(&robots_txt, APP_USER_AGENT);
+            crawler_builder = crawler_builder.with_robot(&robots_txt, APP_USER_AGENT)?;
         }
     }
     if let Some(max_pages) = cli.max_pages {

@@ -22,7 +22,7 @@ pub struct AllPages(pub Vec<Page>);
 /// Fragments are not treated as unique links.
 pub fn parse_links(page_content: &PageContent) -> Page {
     let document = Html::parse_document(&page_content.content);
-    let selector = Selector::parse("a").unwrap();
+    let selector = Selector::parse("a").expect("Failed to parse selector. This is a bug.");
 
     let page_url = page_content.url.clone();
 
@@ -46,7 +46,6 @@ pub fn parse_links(page_content: &PageContent) -> Page {
         .filter(|url| url.scheme() == "https" || url.scheme() == "http")
         .map(|mut href| {
             href.set_fragment(None);
-            // remove_trailing_slash(href)
             href
         })
         .collect();
@@ -60,9 +59,10 @@ pub fn parse_links(page_content: &PageContent) -> Page {
 
 pub(crate) fn assume_html(url: &Url) -> bool {
     let path = url.path();
+
     if path.contains('.') {
-        let suffix = path.split('.').last().unwrap();
-        suffix == "html"
+        let suffix = path.split('.').last();
+        suffix == Some("html")
     } else {
         true
     }
@@ -141,6 +141,9 @@ mod tests {
     fn test_url_parser() {
         let not_html = Url::parse("https://monzo.com/home.pdf").unwrap();
         assert!(!assume_html(&not_html));
+
+        let not_html = Url::parse("https://monzo.com/home").unwrap();
+        assert!(assume_html(&not_html));
 
         let not_html = Url::parse("https://monzo.com/home").unwrap();
         assert!(assume_html(&not_html));
