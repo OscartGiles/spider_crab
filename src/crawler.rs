@@ -1,21 +1,24 @@
 use std::{collections::HashSet, future::Future};
 
+use http::HeaderValue;
 use reqwest::StatusCode;
 use texting_robots::Robot;
+use tokio::task::JoinSet;
 use tracing::info;
 use url::Url;
 
-use crate::parser::{parse_links, AllPages, Page};
+use crate::parser::{assume_html, parse_links, AllPages, Page};
 
 /// Contents of a page.
 pub struct PageContent {
     pub url: Url,
     pub status_code: StatusCode,
     pub content: String,
+    pub content_type: Option<HeaderValue>,
 }
 
 /// A trait for visiting a site and returning the contents of a page.
-pub trait SiteVisitor {
+pub trait SiteVisitor: Clone + Send + 'static {
     fn visit(&mut self, url: Url) -> impl Future<Output = PageContent> + Send;
 }
 
@@ -25,6 +28,7 @@ where
 {
     site_visitor: V,
     robot: Option<Robot>,
+    tasks: JoinSet<Page>,
 }
 
 impl<V> Crawler<V>
@@ -37,53 +41,59 @@ where
         Self {
             site_visitor,
             robot,
+            tasks: JoinSet::new(),
         }
     }
 
     /// Check if the crawler can visit a URL. If no [Robot] is provided assume we can visit any URL.
     fn can_visit(&self, url: &Url) -> bool {
-        self.robot
-            .as_ref()
-            .map_or(true, |robot| robot.allowed(url.as_str()))
+        assume_html(url)
+            && self
+                .robot
+                .as_ref()
+                .map_or(true, |robot| robot.allowed(url.as_str()))
     }
 
-    #[tracing::instrument(name = "visitAndParse", skip(self))]
-    async fn visit_and_parse(&mut self, url: Url) -> Page {
-        let page_response = self.site_visitor.visit(url).await;
-        parse_links(page_response)
+    async fn visit_and_parse(mut site_visitor: V, url: Url) -> Page {
+        let page_response = site_visitor.visit(url).await;
+
+        tokio::task::spawn_blocking(move || parse_links(&page_response))
+            .await
+            .unwrap()
     }
 
-    #[tracing::instrument(skip(self, url))]
     pub async fn crawl(mut self, url: Url) -> AllPages {
         let mut pages: Vec<Page> = Vec::new();
         let mut visited: HashSet<Url> = HashSet::new();
-        let mut to_visit: Vec<Url> = Vec::new();
-
-        if self.can_visit(&url) {
-            to_visit.push(url);
-        }
 
         info!("Starting to crawl");
 
-        while let Some(next_url) = to_visit.pop() {
-            let not_visited = visited.insert(next_url.clone());
+        if self.can_visit(&url) {
+            visited.insert(url.clone());
+            let visitor = self.site_visitor.clone();
+            self.tasks
+                .spawn(async move { Self::visit_and_parse(visitor, url).await });
+        }
 
-            if not_visited {
-                let mut recovered_links = Vec::new();
+        while let Some(page) = self.tasks.join_next().await {
+            let page = page.expect("Please handle me!!"); //ToDO: Handle errors
 
-                let page = self.visit_and_parse(next_url.clone()).await;
+            let mut recovered_links = Vec::new();
+            for link in page.links.iter() {
+                recovered_links.push(link.clone());
+            }
+            pages.push(page);
 
-                for link in page.links.iter() {
-                    recovered_links.push(link.clone());
-                }
-                pages.push(page);
+            for link in recovered_links {
+                if self.can_visit(&link) {
+                    let not_visited = visited.insert(link.clone());
 
-                for link in recovered_links {
-                    if self.can_visit(&link) {
-                        to_visit.push(link);
-                    } else {
-                        println!("DISALLOWED: {}", link);
+                    if not_visited {
+                        let visitor = self.site_visitor.clone();
+                        self.tasks.spawn(Self::visit_and_parse(visitor, link));
                     }
+                } else {
+                    info!("Robots.txt - Ignored {} ", link);
                 }
             }
         }

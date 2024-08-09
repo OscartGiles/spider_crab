@@ -1,9 +1,5 @@
-use std::{
-    collections::HashSet,
-    fmt::{Debug, Display},
-};
+use std::{collections::HashSet, fmt::Debug};
 
-use owo_colors::OwoColorize;
 use reqwest::StatusCode;
 use scraper::{Html, Selector};
 use url::Url;
@@ -17,35 +13,13 @@ pub struct Page {
     pub links: HashSet<Url>,
 }
 
+#[derive(Debug)]
 pub struct AllPages(pub Vec<Page>);
-
-impl Display for AllPages {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for page in self.0.iter() {
-            writeln!(
-                f,
-                "{} ({})",
-                page.url.as_str().green(),
-                page.status_code.green()
-            )?;
-
-            if page.links.is_empty() {
-                writeln!(f, "  --> {}", "No links found".cyan())?;
-            } else {
-                for link in page.links.iter() {
-                    writeln!(f, "  --> {}", link.as_str().blue())?;
-                }
-            }
-        }
-        Ok(())
-    }
-}
 
 /// Get all unique links that are from the same domain as the `page_url`.
 /// Excludes any links that do not use http or https scheme.
 /// Fragments are not treated as unique links.
-#[tracing::instrument(skip(page_content))]
-pub(crate) fn parse_links(page_content: PageContent) -> Page {
+pub fn parse_links(page_content: &PageContent) -> Page {
     let document = Html::parse_document(&page_content.content);
     let selector = Selector::parse("a").unwrap();
 
@@ -71,6 +45,7 @@ pub(crate) fn parse_links(page_content: PageContent) -> Page {
         .filter(|url| url.scheme() == "https" || url.scheme() == "http")
         .map(|mut href| {
             href.set_fragment(None);
+            // remove_trailing_slash(href)
             href
         })
         .collect();
@@ -82,9 +57,19 @@ pub(crate) fn parse_links(page_content: PageContent) -> Page {
     }
 }
 
+pub(crate) fn assume_html(url: &Url) -> bool {
+    let path = url.path();
+    if path.contains('.') {
+        let suffix = path.split('.').last().unwrap();
+        suffix == "html"
+    } else {
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::crawler::PageContent;
+    use crate::{crawler::PageContent, parser::assume_html};
 
     use super::parse_links;
     use std::{collections::HashSet, fs};
@@ -115,9 +100,10 @@ mod tests {
             url: Url::parse("https://monzo.com").unwrap(),
             status_code: reqwest::StatusCode::OK,
             content: html.to_string(),
+            content_type: None,
         };
 
-        let links = parse_links(page).links;
+        let links = parse_links(&page).links;
 
         let expected_links: HashSet<Url> = HashSet::from([
             "https://monzo.com/hi",
@@ -140,12 +126,25 @@ mod tests {
             url: Url::parse("https://monzo.com").unwrap(),
             status_code: reqwest::StatusCode::OK,
             content: html,
+            content_type: None,
         };
 
-        let links = parse_links(page).links;
+        let links = parse_links(&page).links;
 
         for element in links {
             println!("{}", element.as_str());
         }
+    }
+
+    #[test]
+    fn test_url_parser() {
+        let not_html = Url::parse("https://monzo.com/home.pdf").unwrap();
+        assert!(!assume_html(&not_html));
+
+        let not_html = Url::parse("https://monzo.com/home").unwrap();
+        assert!(assume_html(&not_html));
+
+        let not_html = Url::parse("https://monzo.com/home.html").unwrap();
+        assert!(assume_html(&not_html));
     }
 }

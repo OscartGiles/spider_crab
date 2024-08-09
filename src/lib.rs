@@ -1,8 +1,8 @@
 pub mod client_middleware;
 mod crawler;
 mod parser;
-
 pub use crawler::{Crawler, PageContent, SiteVisitor};
+pub use parser::parse_links;
 
 #[cfg(test)]
 mod test {

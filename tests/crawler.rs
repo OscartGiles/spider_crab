@@ -1,3 +1,4 @@
+use http::HeaderValue;
 use monzo_crawler::{Crawler, PageContent, SiteVisitor};
 use std::{
     collections::{HashMap, HashSet},
@@ -23,27 +24,33 @@ impl SiteVisitor for MockUrlVisitor {
             *entry += 1;
         }
 
+        let content_type: HeaderValue = "text/html".parse().unwrap();
+
         // Route urls to responses.
         match url.as_str() {
             "https://monzo.com/" => PageContent {
                 content: r#"<a href="/about"></a> <a href="/cost"></a>"#.into(),
                 status_code: reqwest::StatusCode::OK,
                 url,
+                content_type: Some(content_type),
             },
             "https://monzo.com/about" => PageContent {
                 content: r#"<a href="/about"></a> <a href="/cost"></a>"#.into(),
                 status_code: reqwest::StatusCode::ACCEPTED,
                 url,
+                content_type: Some(content_type),
             },
             "https://monzo.com/cost" => PageContent {
                 content: r#"<a href="/cost-inner"></a>"#.into(),
                 status_code: reqwest::StatusCode::OK,
                 url,
+                content_type: Some(content_type),
             },
             "https://monzo.com/cost-inner" => PageContent {
                 content: r#"<p></p>"#.into(),
                 status_code: reqwest::StatusCode::OK,
                 url,
+                content_type: Some(content_type),
             },
             _ => panic!("Unexpected URL: {}", url),
         }
@@ -107,7 +114,7 @@ async fn test_visitor() {
     // And: The mock visitor reports that it visited each URL exactly once
     assert!(mock_visitor.visited_urls_once());
 
-    println!("Visited pages:\n\n{}", visited_pages);
+    println!("Visited pages:\n\n{:?}", visited_pages);
 }
 
 #[tokio::test]
@@ -149,5 +156,5 @@ Disallow: /cost-inner";
     // And: The mock visitor reports that it visited each URL exactly once
     assert!(mock_visitor.visited_urls_once());
 
-    println!("Visited pages\n{}", visited_pages);
+    println!("Visited pages\n{:?}", visited_pages.0);
 }
