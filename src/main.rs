@@ -10,7 +10,11 @@ use monzo_crawler::{
 };
 use opentelemetry::{trace::TracerProvider as _, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::{runtime::Tokio, trace::Config, Resource};
+use opentelemetry_sdk::{
+    runtime::Tokio,
+    trace::{Config, TracerProvider},
+    Resource,
+};
 
 use owo_colors::{self, OwoColorize};
 use reqwest::redirect;
@@ -21,7 +25,7 @@ use texting_robots::get_robots_url;
 use tokio::{io::AsyncWriteExt, time::Instant};
 use url::Url;
 
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing_subscriber::{prelude::*, EnvFilter};
 
 static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
 
@@ -100,14 +104,14 @@ async fn write_links_to_file(all_pages: &AllPages, file: &Path) -> anyhow::Resul
     Ok(())
 }
 
-#[allow(dead_code)]
-fn configure_tracing() {
-    let tracer = opentelemetry_otlp::new_pipeline()
+/// Configure tracing with the given OTL endpoint.
+fn configure_tracing(otl_endpoint: Url) -> TracerProvider {
+    let provider = opentelemetry_otlp::new_pipeline()
         .tracing()
         .with_exporter(
             opentelemetry_otlp::new_exporter()
                 .tonic()
-                .with_endpoint("http://localhost:4317"),
+                .with_endpoint(otl_endpoint),
         )
         .with_trace_config(
             Config::default().with_resource(Resource::new(vec![KeyValue::new(
@@ -115,34 +119,30 @@ fn configure_tracing() {
                 APP_USER_AGENT,
             )])),
         )
-        // .install_simple()
         .install_batch(Tokio)
-        .unwrap()
-        .tracer(APP_USER_AGENT);
+        .unwrap();
 
-    // log level filtering here
+    let tracer = provider.tracer(APP_USER_AGENT);
+
     let filter_layer = EnvFilter::try_from_default_env()
         .or_else(|_| EnvFilter::try_new("info"))
         .unwrap();
 
-    // fmt layer - printing out logs
-    let fmt_layer = fmt::layer().compact();
-
-    // turn our OTLP pipeline into a tracing layer
     let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 
     tracing_subscriber::registry()
         .with(filter_layer)
-        .with(fmt_layer)
         .with(otel_layer)
         .init();
+
+    provider
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    // configure_tracing();
+    let trace_provider = cli.otl_endpoint.map(configure_tracing);
 
     let client = crawler_client(5, Duration::from_secs(5), cli.max_concurrent_connections);
     let reqwest_visitor = ClientWithMiddlewareVisitor::new(client);
@@ -209,5 +209,9 @@ async fn main() -> anyhow::Result<()> {
         None => print_links(&res, cli.hide_links),
     };
 
+    // Shutdown tracing
+    if let Some(provider_builder) = trace_provider {
+        provider_builder.shutdown()?;
+    }
     Ok(())
 }
