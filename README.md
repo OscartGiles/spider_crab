@@ -64,9 +64,10 @@ Run tests.
 cargo test
 ```
 
-Run benchmarks.
+Run benchmarks (currently only http parsing is benchmarked) and open an html report.
 ```bash
 cargo bench
+open ./target/criterion/report/index.html
 ```
 
 Open library docs.
