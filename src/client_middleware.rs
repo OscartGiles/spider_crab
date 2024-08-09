@@ -52,6 +52,7 @@ impl SiteVisitor for ClientWithMiddlewareVisitor {
 /// use reqwest_retry::RetryTransientMiddleware;
 /// use reqwest_retry::policies::ExponentialBackoff;
 /// use reqwest_middleware::ClientBuilder;
+/// use std::time::Duration;
 ///
 /// let retry_policy = ExponentialBackoff::builder().build_with_max_retries(2);
 ///
@@ -62,7 +63,7 @@ impl SiteVisitor for ClientWithMiddlewareVisitor {
 ///     .unwrap(),
 /// )
 ///     .with(RetryTransientMiddleware::new_with_policy(retry_policy))
-///     .with(RetryTooManyRequestsMiddleware::new())
+///     .with(RetryTooManyRequestsMiddleware::new(Duration::from_secs(1)))
 ///     .build();
 /// ````
 pub struct RetryTooManyRequestsMiddleware {
