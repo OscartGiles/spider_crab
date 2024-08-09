@@ -2,20 +2,20 @@ use monzo_crawler::{
     client_middleware::{MaxConcurrentMiddleware, RetryTooManyRequestsMiddleware},
     Crawler, PageContent, SiteVisitor,
 };
-// use opentelemetry::{trace::TracerProvider as _, KeyValue};
-// use opentelemetry_otlp::WithExportConfig;
-// use opentelemetry_sdk::{trace::Config, Resource};
+use opentelemetry::{trace::TracerProvider as _, KeyValue};
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::{runtime::Tokio, trace::Config, Resource};
 use owo_colors::OwoColorize;
 // use reqwest::Client;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
-// use reqwest_tracing::TracingMiddleware;
+use reqwest_tracing::TracingMiddleware;
 use tokio::time::Instant;
-use tracing::info;
+use tracing::{debug, info};
 
 use url::Url;
 
-// use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[derive(Clone, Debug)]
 struct ClientWithMiddlewareVisitor {
@@ -48,40 +48,40 @@ impl SiteVisitor for ClientWithMiddlewareVisitor {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // let tracer = opentelemetry_otlp::new_pipeline()
-    //     .tracing()
-    //     .with_exporter(
-    //         opentelemetry_otlp::new_exporter()
-    //             .tonic()
-    //             .with_endpoint("http://localhost:4317"),
-    //     )
-    //     .with_trace_config(
-    //         Config::default().with_resource(Resource::new(vec![KeyValue::new(
-    //             "service.name",
-    //             "monzo_crawler",
-    //         )])),
+    let tracer = opentelemetry_otlp::new_pipeline()
+        .tracing()
+        .with_exporter(
+            opentelemetry_otlp::new_exporter()
+                .tonic()
+                .with_endpoint("http://localhost:4317"),
+        )
+        .with_trace_config(
+            Config::default().with_resource(Resource::new(vec![KeyValue::new(
+                "service.name",
+                "monzo_crawler",
+            )])),
+        )
+        // .install_simple()
+        .install_batch(Tokio)
+        .unwrap()
+        .tracer("monzo_crawler");
 
-    //     )
-    //     .install_simple()
-    //     .unwrap()
-    //     .tracer("monzo_crawler");
+    // log level filtering here
+    let filter_layer = EnvFilter::try_from_default_env()
+        .or_else(|_| EnvFilter::try_new("info"))
+        .unwrap();
 
-    // // log level filtering here
-    // let filter_layer = EnvFilter::try_from_default_env()
-    //     .or_else(|_| EnvFilter::try_new("info"))
-    //     .unwrap();
+    // fmt layer - printing out logs
+    let fmt_layer = fmt::layer().compact();
 
-    // // fmt layer - printing out logs
-    // let fmt_layer = fmt::layer().compact();
+    // turn our OTLP pipeline into a tracing layer
+    let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 
-    // // turn our OTLP pipeline into a tracing layer
-    // let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
-
-    // tracing_subscriber::registry()
-    //     .with(filter_layer)
-    //     .with(fmt_layer)
-    //     .with(otel_layer)
-    //     .init();
+    tracing_subscriber::registry()
+        .with(filter_layer)
+        .with(fmt_layer)
+        .with(otel_layer)
+        .init();
 
     let retry_policy = ExponentialBackoff::builder().build_with_max_retries(2);
 
@@ -93,8 +93,8 @@ async fn main() -> anyhow::Result<()> {
     )
     .with(RetryTransientMiddleware::new_with_policy(retry_policy))
     .with(RetryTooManyRequestsMiddleware::new())
-    .with(MaxConcurrentMiddleware::new(100))
-    // .with(TracingMiddleware::default())
+    .with(MaxConcurrentMiddleware::new(1000))
+    .with(TracingMiddleware::default())
     .build();
 
     let reqwest_visitor = ClientWithMiddlewareVisitor::new(client);
@@ -125,6 +125,8 @@ Disallow: /-deeplinks/
         duration,
         res.0.len().green()
     );
+
+    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
     Ok(())
 }

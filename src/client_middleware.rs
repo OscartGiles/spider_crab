@@ -3,6 +3,7 @@ use reqwest::{Request, Response};
 use reqwest_middleware::{Middleware, Next, Result};
 use std::{
     fmt::{self},
+    sync::Arc,
     time::{Duration, SystemTime},
 };
 use tokio::sync::Semaphore;
@@ -59,7 +60,7 @@ impl Default for RetryTooManyRequestsMiddleware {
 
 #[async_trait::async_trait]
 impl Middleware for RetryTooManyRequestsMiddleware {
-    // #[tracing::instrument(name = "SlowDownRequestsMiddleware", skip_all)]
+    #[tracing::instrument(name = "SlowDownRequestsMiddleware", skip_all)]
     async fn handle(
         &self,
         req: Request,
@@ -76,8 +77,6 @@ impl Middleware for RetryTooManyRequestsMiddleware {
             } else {
                 *self.retry_after.write().await = None;
             }
-        } else {
-            info!("Not slowing down requests.");
         }
 
         let result = next.clone().run(req, extensions).await;
@@ -85,7 +84,7 @@ impl Middleware for RetryTooManyRequestsMiddleware {
         if let Ok(resp) = result.as_ref() {
             if resp.status() == StatusCode::TOO_MANY_REQUESTS {
                 if let Some(header) = resp.headers().get(reqwest::header::RETRY_AFTER) {
-                    debug!("Server requested slowdown.");
+                    info!("Server requested slowdown.");
                     let retry_after = match header.to_str() {
                         Ok(s) => match s.parse::<u64>() {
                             Ok(mut seconds) => {
@@ -120,7 +119,7 @@ impl Middleware for RetryTooManyRequestsMiddleware {
 }
 
 pub struct MaxConcurrentMiddleware {
-    semaphore: Semaphore,
+    semaphore: Arc<Semaphore>,
 }
 
 impl std::fmt::Debug for MaxConcurrentMiddleware {
@@ -134,7 +133,7 @@ impl std::fmt::Debug for MaxConcurrentMiddleware {
 impl MaxConcurrentMiddleware {
     pub fn new(max_concurrent: usize) -> Self {
         Self {
-            semaphore: Semaphore::new(max_concurrent),
+            semaphore: Arc::new(Semaphore::new(max_concurrent)),
         }
     }
 }
@@ -142,7 +141,7 @@ impl MaxConcurrentMiddleware {
 /// A middleware that limits the number of concurrent requests being made by the client.
 #[async_trait::async_trait]
 impl Middleware for MaxConcurrentMiddleware {
-    // #[tracing::instrument(name = "MaxConcurrentMiddleware", skip(req, extensions, next))]
+    #[tracing::instrument(name = "MaxConcurrentMiddleware", skip(req, extensions, next))]
     async fn handle(
         &self,
         req: Request,
@@ -151,13 +150,19 @@ impl Middleware for MaxConcurrentMiddleware {
     ) -> Result<Response> {
         let _permit = self
             .semaphore
-            .acquire()
+            .clone()
+            .acquire_owned()
             .await
             .expect("Could not acquire semaphore because it was closed. This is a bug."); // Permit released on drop.
-        debug!(
+        info!(
             "Acquired semaphore permit. Available permits: {}",
             self.semaphore.available_permits()
         );
-        next.clone().run(req, extensions).await
+
+        let res = next.clone().run(req, extensions).await;
+
+        drop(_permit);
+        info!("dropped permit: {}", self.semaphore.available_permits());
+        res
     }
 }
