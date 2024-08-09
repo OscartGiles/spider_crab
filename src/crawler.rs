@@ -88,7 +88,7 @@ where
         }
 
         while let Some(page) = self.tasks.join_next().await {
-            let page = page.unwrap(); //ToDO: Handle errors
+            let page = page.unwrap();
 
             // Check if we have reached the max pages
             if Some(page_count) == self.max_pages {

@@ -90,13 +90,19 @@ fn print_links(all_pages: &AllPages, hide_links: bool) {
     }
 }
 
-async fn write_links_to_file(all_pages: &AllPages, file: &Path) -> anyhow::Result<()> {
+async fn write_links_to_file(
+    all_pages: &AllPages,
+    file: &Path,
+    hide_links: bool,
+) -> anyhow::Result<()> {
     let mut file = tokio::fs::File::create(file).await?;
     for page in all_pages.0.iter() {
         file.write_all(format!("{}\n", page.url).as_bytes()).await?;
-        for link in page.links.iter() {
-            file.write_all(format!("  --> {}\n", link).as_bytes())
-                .await?;
+        if !hide_links {
+            for link in page.links.iter() {
+                file.write_all(format!("  --> {}\n", link).as_bytes())
+                    .await?;
+            }
         }
     }
     Ok(())
@@ -163,10 +169,9 @@ async fn main() -> anyhow::Result<()> {
 
     let crawler = crawler_builder.build();
 
+    // Subscribe to the crawler's broadcast channel. This will allow us to receive progress updates
     let mut rx = crawler.subscribe();
-
     let url_string = cli.url.clone();
-
     // Spawn a task to manage progress bar updates
     let progress_handle = tokio::task::spawn(async move {
         let start = Instant::now();
@@ -205,7 +210,7 @@ async fn main() -> anyhow::Result<()> {
     progress_handle.await?;
 
     match &cli.output {
-        Some(path) => write_links_to_file(&res, path).await?,
+        Some(path) => write_links_to_file(&res, path, cli.hide_links).await?,
         None => print_links(&res, cli.hide_links),
     };
 

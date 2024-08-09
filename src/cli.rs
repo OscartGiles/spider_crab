@@ -6,14 +6,14 @@ use clap::Parser;
 #[command(version, about, long_about = None)]
 /// Welcome to the Monzo Crawler! Try not to get rate limited!
 pub struct Cli {
-    /// Root URL to start crawling from
+    /// Root URL to start crawling from.
     pub url: url::Url,
 
-    /// Root URL to start crawling from
+    /// Root URL to start crawling from.
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 
-    /// Hide links when displaying output in the console
+    /// Hide links when displaying output.
     #[arg(short('l'), long)]
     pub hide_links: bool,
 
