@@ -1,9 +1,12 @@
-use std::time::Duration;
+mod cli;
+use std::{path::Path, time::Duration};
 
+use clap::Parser;
+use cli::Cli;
 use indicatif::{MultiProgress, ProgressBar};
 use monzo_crawler::{
     client_middleware::{MaxConcurrentMiddleware, RetryTooManyRequestsMiddleware},
-    ClientWithMiddlewareVisitor, Crawler,
+    AllPages, ClientWithMiddlewareVisitor, CrawlerBuilder,
 };
 use opentelemetry::{trace::TracerProvider as _, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
@@ -15,7 +18,7 @@ use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
 use reqwest_tracing::TracingMiddleware;
 use texting_robots::get_robots_url;
-use tokio::time::Instant;
+use tokio::{io::AsyncWriteExt, time::Instant};
 use url::Url;
 
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -64,13 +67,37 @@ fn crawler_client(
 }
 
 /// Try to get a robots.txt file for a given URL, returning None if it doesn't exist.
-async fn get_robots(root_url: &Url) -> anyhow::Result<Option<String>> {
+async fn get_robots(root_url: &Url) -> anyhow::Result<String> {
     let rclient = robots_client();
     let robots_url = get_robots_url(root_url.as_str())?;
 
     let res = rclient.get(robots_url.as_str()).send().await?;
     let robots = res.text().await;
-    Ok(robots.ok())
+    robots.map_err(Into::into)
+}
+
+fn print_links(all_pages: &AllPages, hide_links: bool) {
+    for page in all_pages.0.iter() {
+        println!("{}", page.url.green());
+
+        if !hide_links {
+            for link in page.links.iter() {
+                println!("  --> {}", link.cyan());
+            }
+        }
+    }
+}
+
+async fn write_links_to_file(all_pages: &AllPages, file: &Path) -> anyhow::Result<()> {
+    let mut file = tokio::fs::File::create(file).await?;
+    for page in all_pages.0.iter() {
+        file.write_all(format!("{}\n", page.url).as_bytes()).await?;
+        for link in page.links.iter() {
+            file.write_all(format!("  --> {}\n", link).as_bytes())
+                .await?;
+        }
+    }
+    Ok(())
 }
 
 #[allow(dead_code)]
@@ -113,19 +140,34 @@ fn configure_tracing() {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+
     // configure_tracing();
 
-    let client = crawler_client(5, Duration::from_secs(5), 1000);
+    let client = crawler_client(5, Duration::from_secs(5), cli.max_concurrent_connections);
     let reqwest_visitor = ClientWithMiddlewareVisitor::new(client);
 
-    let root_url = Url::parse("https://oscartgiles.github.io/")?;
-    let robots_txt = get_robots(&root_url).await?;
-    let crawler = Crawler::new(reqwest_visitor, APP_USER_AGENT, robots_txt.as_deref());
+    // Build a crawler
+    let mut crawler_builder = CrawlerBuilder::new(reqwest_visitor);
+    if let Ok(robots_txt) = get_robots(&cli.url).await {
+        if !cli.ignore_robots {
+            crawler_builder = crawler_builder.with_robot(&robots_txt, APP_USER_AGENT);
+        }
+    }
+    if let Some(max_pages) = cli.max_pages {
+        crawler_builder = crawler_builder.with_max_pages(max_pages);
+    }
+    if let Some(max_time_seconds) = cli.max_time {
+        crawler_builder = crawler_builder.with_max_time(max_time_seconds);
+    }
+
+    let crawler = crawler_builder.build();
 
     let mut rx = crawler.subscribe();
 
-    let url_string = root_url.clone();
+    let url_string = cli.url.clone();
 
+    // Spawn a task to manage progress bar updates
     let progress_handle = tokio::task::spawn(async move {
         let start = Instant::now();
         let mut count = 0;
@@ -159,15 +201,13 @@ async fn main() -> anyhow::Result<()> {
         visit_stats.finish_and_clear();
     });
 
-    let res = crawler.crawl(root_url).await;
+    let res = crawler.crawl(cli.url).await;
     progress_handle.await?;
 
-    for page in res.0.iter() {
-        println!("{}", page.url);
-        for link in page.links.iter() {
-            println!("  --> {}", link);
-        }
-    }
+    match &cli.output {
+        Some(path) => write_links_to_file(&res, path).await?,
+        None => print_links(&res, cli.hide_links),
+    };
 
     Ok(())
 }

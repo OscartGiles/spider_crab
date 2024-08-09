@@ -1,5 +1,5 @@
 use http::HeaderValue;
-use monzo_crawler::{Crawler, PageContent, SiteVisitor};
+use monzo_crawler::{CrawlerBuilder, PageContent, SiteVisitor};
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, RwLock},
@@ -93,7 +93,8 @@ async fn test_visitor() {
 
     // Given: We crawl the (mock) Monzo website
     let mock_visitor = MockUrlVisitor::new();
-    let crawler = Crawler::new(mock_visitor.clone(), "monzo-crawler", None);
+    let crawler = CrawlerBuilder::new(mock_visitor.clone()).build();
+
     let root_url = Url::parse("https://monzo.com").unwrap();
 
     // When we crawl starting at the root URL
@@ -135,7 +136,9 @@ Disallow: /cost-inner";
 
     // Given: We crawl the (mock) Monzo website
     let mock_visitor = MockUrlVisitor::new();
-    let crawler = Crawler::new(mock_visitor.clone(), "monzo-crawler", Some(robots_txt));
+    let crawler = CrawlerBuilder::new(mock_visitor.clone())
+        .with_robot(robots_txt, "test-agent")
+        .build();
     let root_url = Url::parse("https://monzo.com").unwrap();
 
     // When we crawl starting at the root URL
