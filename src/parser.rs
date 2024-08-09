@@ -6,6 +6,7 @@ use url::Url;
 
 use crate::crawler::PageContent;
 
+/// A page that has been visited by the [Crawler](crate::crawler::Crawler).
 #[derive(Debug, Clone)]
 pub struct Page {
     pub url: Url,
@@ -13,7 +14,7 @@ pub struct Page {
     pub links: HashSet<Url>,
 }
 
-/// A collection of all pages visited by the [Crawler].
+/// A collection of all [Page]s visited by the [Crawler](crate::crawler::Crawler).
 #[derive(Debug)]
 pub struct AllPages(pub Vec<Page>);
 

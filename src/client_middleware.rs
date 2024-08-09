@@ -11,7 +11,7 @@ use tracing::debug;
 
 use crate::{PageContent, SiteVisitor};
 
-/// A Visitor that uses a [ClientWithMiddleware] internally.
+/// A [SiteVisitor] that uses a [ClientWithMiddleware] internally.
 #[derive(Clone, Debug)]
 pub struct ClientWithMiddlewareVisitor {
     client: ClientWithMiddleware,

@@ -22,7 +22,7 @@ pub struct PageContent {
     pub content_type: Option<HeaderValue>,
 }
 
-/// A trait for visiting a site and returning the contents of a page.
+/// A trait for visiting a URL and returning the contents of its page.
 pub trait SiteVisitor: Clone + Send + 'static {
     /// Visit a URL and return the contents of the page as a [PageContent].
     fn visit(&mut self, url: Url) -> impl Future<Output = PageContent> + Send;
@@ -70,6 +70,8 @@ where
         self.channel.subscribe()
     }
 
+    /// Start crawling from a given URL.
+    /// Consumes the [Crawler] and returns a collection of all pages visited.
     #[tracing::instrument(skip(self))]
     pub async fn crawl(mut self, url: Url) -> AllPages {
         let mut pages: Vec<Page> = Vec::new();
