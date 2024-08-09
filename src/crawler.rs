@@ -22,6 +22,9 @@ pub trait SiteVisitor: Clone + Send + 'static {
     fn visit(&mut self, url: Url) -> impl Future<Output = PageContent> + Send;
 }
 
+/// Web crawler.
+/// Given a starting URL, the crawler should visit each URL it finds on the same domain.
+/// The crawler is limited to one subdomain. If a [Robot] is provided, the crawler respects the rules in robots.
 pub struct Crawler<V>
 where
     V: SiteVisitor,
@@ -68,7 +71,7 @@ where
         let mut pages: Vec<Page> = Vec::new();
         let mut visited: HashSet<Url> = HashSet::new();
 
-        debug!("Starting to crawl");
+        debug!("Starting crawl");
 
         if self.can_visit(&url) {
             visited.insert(url.clone());
