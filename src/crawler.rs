@@ -24,12 +24,13 @@ pub struct PageContent {
 
 /// A trait for visiting a site and returning the contents of a page.
 pub trait SiteVisitor: Clone + Send + 'static {
+    /// Visit a URL and return the contents of the page as a [PageContent].
     fn visit(&mut self, url: Url) -> impl Future<Output = PageContent> + Send;
 }
 
 /// Web crawler.
 /// Given a starting URL, the crawler should visit each URL it finds on the same domain.
-/// The crawler is limited to one subdomain. If a [Robot] is provided, the crawler respects the rules in robots.
+/// Create a Crawler using [CrawlerBuilder].
 pub struct Crawler<V>
 where
     V: SiteVisitor,
@@ -138,9 +139,7 @@ where
     }
 }
 
-/// Web crawler.
-/// Given a starting URL, the crawler should visit each URL it finds on the same domain.
-/// The crawler is limited to one subdomain. If a [Robot] is provided, the crawler respects the rules in robots.
+/// Builder for [Crawler].
 pub struct CrawlerBuilder<V>
 where
     V: SiteVisitor,
@@ -155,6 +154,7 @@ impl<V> CrawlerBuilder<V>
 where
     V: SiteVisitor,
 {
+    /// Create a new [CrawlerBuilder] with a [SiteVisitor].
     pub fn new(site_visitor: V) -> Self {
         Self {
             site_visitor,
@@ -164,21 +164,25 @@ where
         }
     }
 
+    /// Provide a robot_txt file for the crawler. The crawler will not visit pages denied in the robot_txt file.
     pub fn with_robot(mut self, robot_txt: &str, crawler_agent: &str) -> Self {
         self.robot = Some(Robot::new(crawler_agent, robot_txt.as_bytes()).unwrap());
         self
     }
 
+    /// Set the maximum time the crawler will run for.
     pub fn with_max_time(mut self, max_time: u64) -> Self {
         self.max_time = Some(Duration::from_secs(max_time));
         self
     }
 
+    /// Set the maximum number of pages the crawler will visit.
     pub fn with_max_pages(mut self, max_pages: u64) -> Self {
         self.max_pages = Some(max_pages);
         self
     }
 
+    /// Build the crawler.
     pub fn build(self) -> Crawler<V> {
         let (tx, _) = broadcast::channel(100);
         Crawler {

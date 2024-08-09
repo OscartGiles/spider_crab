@@ -11,7 +11,7 @@ use tracing::debug;
 
 use crate::{PageContent, SiteVisitor};
 
-/// A Visitor for [ClientWithMiddleware].
+/// A Visitor that uses a [ClientWithMiddleware] internally.
 #[derive(Clone, Debug)]
 pub struct ClientWithMiddlewareVisitor {
     client: ClientWithMiddleware,
@@ -155,6 +155,7 @@ impl Middleware for RetryTooManyRequestsMiddleware {
     }
 }
 
+/// A middleware that limits the number of concurrent requests being made by the client.
 pub struct MaxConcurrentMiddleware {
     semaphore: Arc<Semaphore>,
 }

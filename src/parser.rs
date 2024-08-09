@@ -13,6 +13,7 @@ pub struct Page {
     pub links: HashSet<Url>,
 }
 
+/// A collection of all pages visited by the [Crawler].
 #[derive(Debug)]
 pub struct AllPages(pub Vec<Page>);
 
