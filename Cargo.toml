@@ -7,6 +7,7 @@ edition = "2021"
 anyhow = "1.0.86"
 async-trait = "0.1.81"
 http = "1.1.0"
+indicatif = { version = "0.17.8", features = ["tokio"] }
 opentelemetry = "0.24.0"
 opentelemetry-otlp = "0.17.0"
 opentelemetry_sdk = { version = "0.24.1", features = ["rt-tokio"] }

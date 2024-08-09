@@ -6,7 +6,7 @@ use url::Url;
 
 use crate::crawler::PageContent;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Page {
     pub url: Url,
     pub status_code: StatusCode,

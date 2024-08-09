@@ -1,9 +1,9 @@
-use std::{collections::HashSet, future::Future};
+use std::{collections::HashSet, future::Future, sync::Arc};
 
 use http::HeaderValue;
 use reqwest::StatusCode;
 use texting_robots::Robot;
-use tokio::task::JoinSet;
+use tokio::{sync::broadcast, task::JoinSet};
 use tracing::{debug, Instrument};
 use url::Url;
 
@@ -32,6 +32,7 @@ where
     site_visitor: V,
     robot: Option<Robot>,
     tasks: JoinSet<Page>,
+    channel: broadcast::Sender<Arc<Page>>,
 }
 
 impl<V> Crawler<V>
@@ -41,10 +42,13 @@ where
     pub fn new(site_visitor: V, crawler_agent: &str, robot_txt: Option<&str>) -> Self {
         let robot = robot_txt.map(|txt| Robot::new(crawler_agent, txt.as_bytes()).unwrap());
 
+        let (tx, _) = broadcast::channel(100);
+
         Self {
             site_visitor,
             robot,
             tasks: JoinSet::new(),
+            channel: tx,
         }
     }
 
@@ -66,6 +70,10 @@ where
             .unwrap()
     }
 
+    pub fn subscribe(&self) -> broadcast::Receiver<Arc<Page>> {
+        self.channel.subscribe()
+    }
+
     #[tracing::instrument(skip(self))]
     pub async fn crawl(mut self, url: Url) -> AllPages {
         let mut pages: Vec<Page> = Vec::new();
@@ -83,6 +91,9 @@ where
 
         while let Some(page) = self.tasks.join_next().await {
             let page = page.expect("Please handle me!!"); //ToDO: Handle errors
+
+            // Broadcast the page
+            let _ = self.channel.send(Arc::new(page.clone())); // Ignore errors as we don't care if the receiver is gone
 
             let mut recovered_links = Vec::new();
             for link in page.links.iter() {

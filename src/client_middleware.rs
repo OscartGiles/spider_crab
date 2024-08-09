@@ -7,7 +7,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 use tokio::sync::Semaphore;
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::{PageContent, SiteVisitor};
 
