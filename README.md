@@ -30,7 +30,7 @@ Save the results to file.
 monzo_crawler https://oscartgiles.github.io/ -o crawl_results.txt
 ```
 
-Hide links in the output (terminal only).
+Hide links in the output.
 ```bash
 monzo_crawler https://oscartgiles.github.io/ --hide-links
 ```
@@ -70,7 +70,7 @@ and then run the CLI with the `--otl-endpoint` option.
 monzo_crawler https://oscartgiles.github.io/ --otl-endpoint http://localhost:4317
 ```
 
-You can then view the logs at `http://localhost:16686/`
+You can then view the logs at [`http://localhost:16686/`](http://localhost:16686/).
 
 Clean up the Jaeger container.
 ```bash

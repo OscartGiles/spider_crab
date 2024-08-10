@@ -40,4 +40,3 @@ harness = false
 
 [lints.clippy]
 unwrap_used = "warn"
-panic = "warn"

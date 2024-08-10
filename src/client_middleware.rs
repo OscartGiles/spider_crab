@@ -6,11 +6,11 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime},
 };
-use thiserror::Error;
+
 use tokio::sync::Semaphore;
 use tracing::debug;
 
-use crate::{PageContent, SiteVisitor};
+use crate::{crawler::VisitorError, PageContent, SiteVisitor};
 
 /// A [SiteVisitor] that uses a [ClientWithMiddleware] internally.
 #[derive(Clone, Debug)]
@@ -23,11 +23,6 @@ impl ClientWithMiddlewareVisitor {
         Self { client }
     }
 }
-
-/// An error from ths vistor. Assumes all recoverable errors have been handled and just reporting to caller.
-#[derive(Error, Debug)]
-#[error("failed to make a request")]
-pub struct VisitorError(anyhow::Error);
 
 impl SiteVisitor for ClientWithMiddlewareVisitor {
     async fn visit(&mut self, url: url::Url) -> Result<PageContent, VisitorError> {

@@ -8,14 +8,17 @@ use std::{
 use http::HeaderValue;
 use reqwest::StatusCode;
 use texting_robots::Robot;
+use thiserror::Error;
 use tokio::{sync::broadcast, task::JoinSet};
 use tracing::{debug, error, info, Instrument};
 use url::Url;
 
-use crate::{
-    client_middleware::VisitorError,
-    parser::{assume_html, parse_links, AllPages, Page},
-};
+use crate::parser::{assume_html, parse_links, AllPages, Page};
+
+/// An error from ths vistor. Assumes all recoverable errors have been handled and just reporting to caller.
+#[derive(Error, Debug)]
+#[error("failed to make a request")]
+pub struct VisitorError(pub anyhow::Error);
 
 /// Contents of a page.
 pub struct PageContent {

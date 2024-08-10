@@ -78,7 +78,7 @@ mod tests {
     use url::Url;
 
     #[test]
-    fn test_link_parser() {
+    fn test_link_parser() -> anyhow::Result<()> {
         let html = r#"
     <!DOCTYPE html>
     <meta charset="utf-8">
@@ -99,7 +99,7 @@ mod tests {
     </div>
 "#;
         let page = PageContent {
-            url: Url::parse("https://monzo.com").unwrap(),
+            url: Url::parse("https://monzo.com")?,
             status_code: reqwest::StatusCode::OK,
             content: html.to_string(),
             content_type: None,
@@ -114,18 +114,19 @@ mod tests {
             "https://monzo.com/fragments-not-unique",
         ])
         .iter()
-        .map(|&url| Url::parse(url).unwrap())
+        .map(|&url| Url::parse(url).expect("Failed to parse URL."))
         .collect();
 
         assert_eq!(links, expected_links);
+        Ok(())
     }
 
     #[test]
-    fn test_parse_monzo() {
-        let html = fs::read_to_string("./tests/test_data/monzo/home.html").unwrap();
+    fn test_parse_monzo() -> anyhow::Result<()> {
+        let html = fs::read_to_string("./tests/test_data/monzo/home.html")?;
 
         let page = PageContent {
-            url: Url::parse("https://monzo.com").unwrap(),
+            url: Url::parse("https://monzo.com")?,
             status_code: reqwest::StatusCode::OK,
             content: html,
             content_type: None,
@@ -136,20 +137,24 @@ mod tests {
         for element in links {
             println!("{}", element.as_str());
         }
+
+        Ok(())
     }
 
     #[test]
-    fn test_url_parser() {
-        let not_html = Url::parse("https://monzo.com/home.pdf").unwrap();
+    fn test_url_parser() -> anyhow::Result<()> {
+        let not_html = Url::parse("https://monzo.com/home.pdf")?;
         assert!(!assume_html(&not_html));
 
-        let not_html = Url::parse("https://monzo.com/home").unwrap();
+        let not_html = Url::parse("https://monzo.com/home")?;
         assert!(assume_html(&not_html));
 
-        let not_html = Url::parse("https://monzo.com/home").unwrap();
+        let not_html = Url::parse("https://monzo.com/home")?;
         assert!(assume_html(&not_html));
 
-        let not_html = Url::parse("https://monzo.com/home.html").unwrap();
+        let not_html = Url::parse("https://monzo.com/home.html")?;
         assert!(assume_html(&not_html));
+
+        Ok(())
     }
 }

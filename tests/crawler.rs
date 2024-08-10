@@ -1,5 +1,5 @@
 use http::HeaderValue;
-use monzo_crawler::{client_middleware::VisitorError, CrawlerBuilder, PageContent, SiteVisitor};
+use monzo_crawler::{CrawlerBuilder, PageContent, SiteVisitor, VisitorError};
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, RwLock},
@@ -24,7 +24,7 @@ impl SiteVisitor for MockUrlVisitor {
             *entry += 1;
         }
 
-        let content_type: HeaderValue = "text/html".parse().unwrap();
+        let content_type: HeaderValue = "text/html".parse().expect("Failed to parse header");
 
         // Route urls to responses.
         let response = match url.as_str() {
@@ -81,7 +81,7 @@ impl MockUrlVisitor {
 }
 
 #[tokio::test]
-async fn test_visitor() {
+async fn test_visitor() -> anyhow::Result<()> {
     // Expect the crawler to visit these URLs
     let expected_urls = HashSet::from([
         "https://monzo.com/",
@@ -90,14 +90,14 @@ async fn test_visitor() {
         "https://monzo.com/cost-inner",
     ])
     .iter()
-    .map(|&url| Url::parse(url).unwrap())
+    .map(|&url| Url::parse(url).expect("Failed to parse URL."))
     .collect();
 
     // Given: We crawl the (mock) Monzo website
     let mock_visitor = MockUrlVisitor::new();
     let crawler = CrawlerBuilder::new(mock_visitor.clone()).build();
 
-    let root_url = Url::parse("https://monzo.com").unwrap();
+    let root_url = Url::parse("https://monzo.com")?;
 
     // When we crawl starting at the root URL
     let visited_pages = crawler.crawl(root_url).await;
@@ -118,10 +118,12 @@ async fn test_visitor() {
     assert!(mock_visitor.visited_urls_once());
 
     println!("Visited pages:\n\n{:?}", visited_pages);
+
+    Ok(())
 }
 
 #[tokio::test]
-async fn test_visitor_with_robots() {
+async fn test_visitor_with_robots() -> anyhow::Result<()> {
     // Expect the crawler to visit these URLs
     let expected_urls = HashSet::from([
         "https://monzo.com/",
@@ -130,7 +132,7 @@ async fn test_visitor_with_robots() {
         // "https://monzo.com/cost-inner",
     ])
     .iter()
-    .map(|&url| Url::parse(url).unwrap())
+    .map(|&url| Url::parse(url).expect("Failed to parse URL."))
     .collect();
 
     let robots_txt = r"User-Agent: *
@@ -142,7 +144,7 @@ Disallow: /cost-inner";
         .with_robot(robots_txt, "test-agent")
         .expect("Could not parse robots.txt")
         .build();
-    let root_url = Url::parse("https://monzo.com").unwrap();
+    let root_url = Url::parse("https://monzo.com")?;
 
     // When we crawl starting at the root URL
     let visited_pages = crawler.crawl(root_url).await;
@@ -163,4 +165,6 @@ Disallow: /cost-inner";
     assert!(mock_visitor.visited_urls_once());
 
     println!("Visited pages\n{:?}", visited_pages.0);
+
+    Ok(())
 }

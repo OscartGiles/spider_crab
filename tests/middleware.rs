@@ -18,14 +18,13 @@ use wiremock::{
 
 #[tokio::test]
 #[traced_test(enable = true)]
-async fn test_too_many_request_middleware() {
+async fn test_too_many_request_middleware() -> anyhow::Result<()> {
     let retry_policy = ExponentialBackoff::builder().build_with_max_retries(2);
 
     let client = ClientBuilder::new(
         reqwest::Client::builder()
             .user_agent("monzo_crawler")
-            .build()
-            .unwrap(),
+            .build()?,
     )
     .with(RetryTransientMiddleware::new_with_policy(retry_policy))
     .with(RetryTooManyRequestsMiddleware::new(Duration::from_secs(1)))
@@ -117,6 +116,8 @@ async fn test_too_many_request_middleware() {
     let _res = client
         .get(format!("{}/go-fast", &mock_server.uri()))
         .send()
-        .await
-        .unwrap();
+        .await?;
+
+    // ToDo: Assert that the Retry-After header was respected.
+    Ok(())
 }
