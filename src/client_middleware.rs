@@ -1,11 +1,12 @@
 use http::{Extensions, StatusCode};
 use reqwest::{Request, Response};
-use reqwest_middleware::{ClientWithMiddleware, Middleware, Next, Result};
+use reqwest_middleware::{ClientWithMiddleware, Middleware, Next};
 use std::{
     fmt::{self},
     sync::Arc,
     time::{Duration, SystemTime},
 };
+use thiserror::Error;
 use tokio::sync::Semaphore;
 use tracing::debug;
 
@@ -23,21 +24,33 @@ impl ClientWithMiddlewareVisitor {
     }
 }
 
+/// An error from ths vistor. Assumes all recoverable errors have been handled and just reporting to caller.
+#[derive(Error, Debug)]
+#[error("failed to make a request")]
+pub struct VisitorError(anyhow::Error);
+
 impl SiteVisitor for ClientWithMiddlewareVisitor {
-    async fn visit(&mut self, url: url::Url) -> PageContent {
-        let response = self.client.get(url.as_str()).send().await.unwrap();
+    async fn visit(&mut self, url: url::Url) -> Result<PageContent, VisitorError> {
+        let response = self
+            .client
+            .get(url.as_str())
+            .send()
+            .await
+            .map_err(|e| VisitorError(e.into()))?;
+
         let status_code = response.status();
         let mut headers = response.headers().clone();
 
         let content_type = headers.remove("Content-Type");
-        let content = response.text().await.unwrap();
 
-        PageContent {
+        let content = response.text().await.map_err(|e| VisitorError(e.into()))?;
+
+        Ok(PageContent {
             content,
             status_code,
             url,
             content_type,
-        }
+        })
     }
 }
 
@@ -96,7 +109,7 @@ impl Middleware for RetryTooManyRequestsMiddleware {
         req: Request,
         extensions: &mut Extensions,
         next: Next<'_>,
-    ) -> Result<Response> {
+    ) -> reqwest_middleware::Result<Response> {
         let retry_after = *self.retry_after.read().await;
 
         if let Some(retry_after) = retry_after {
@@ -186,7 +199,7 @@ impl Middleware for MaxConcurrentMiddleware {
         req: Request,
         extensions: &mut Extensions,
         next: Next<'_>,
-    ) -> Result<Response> {
+    ) -> reqwest_middleware::Result<Response> {
         let _permit = self
             .semaphore
             .clone()

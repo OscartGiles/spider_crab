@@ -19,6 +19,7 @@ reqwest-retry = "0.6.0"
 reqwest-tracing = "0.5.2"
 scraper = "0.20.0"
 texting_robots = "0.2.2"
+thiserror = "1.0.63"
 tokio = { version = "1.39.2", features = ["fs", "macros", "rt-multi-thread"] }
 tracing = "0.1.40"
 tracing-opentelemetry = "0.25.0"

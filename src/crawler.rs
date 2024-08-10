@@ -9,10 +9,13 @@ use http::HeaderValue;
 use reqwest::StatusCode;
 use texting_robots::Robot;
 use tokio::{sync::broadcast, task::JoinSet};
-use tracing::{debug, info, Instrument};
+use tracing::{debug, error, info, Instrument};
 use url::Url;
 
-use crate::parser::{assume_html, parse_links, AllPages, Page};
+use crate::{
+    client_middleware::VisitorError,
+    parser::{assume_html, parse_links, AllPages, Page},
+};
 
 /// Contents of a page.
 pub struct PageContent {
@@ -25,7 +28,8 @@ pub struct PageContent {
 /// A trait for visiting a URL and returning the contents of its page.
 pub trait SiteVisitor: Clone + Send + 'static {
     /// Visit a URL and return the contents of the page as a [PageContent].
-    fn visit(&mut self, url: Url) -> impl Future<Output = PageContent> + Send;
+    fn visit(&mut self, url: Url)
+        -> impl Future<Output = Result<PageContent, VisitorError>> + Send;
 }
 
 /// Web crawler.
@@ -37,7 +41,7 @@ where
 {
     site_visitor: V,
     robot: Option<Robot>,
-    tasks: JoinSet<Page>,
+    tasks: JoinSet<Result<Page, VisitorError>>,
     channel: broadcast::Sender<Arc<Page>>,
     max_time: Option<std::time::Duration>,
     max_pages: Option<u64>,
@@ -56,13 +60,15 @@ where
                 .map_or(true, |robot| robot.allowed(url.as_str()))
     }
 
-    async fn visit_and_parse(mut site_visitor: V, url: Url) -> Page {
+    async fn visit_and_parse(mut site_visitor: V, url: Url) -> Result<Page, VisitorError> {
         debug!("Visiting and parsing {}", url);
-        let page_response = site_visitor.visit(url).await;
+        let page_response = site_visitor.visit(url).await?;
 
-        tokio::task::spawn_blocking(move || parse_links(&page_response))
+        let result = tokio::task::spawn_blocking(move || parse_links(&page_response))
             .await
-            .unwrap()
+            .expect("Task failed to execute to completion");
+
+        Ok(result)
     }
 
     /// Subscribe to receive pages as they are crawled.
@@ -89,8 +95,21 @@ where
                 .spawn(Self::visit_and_parse(visitor, url).instrument(tracing::Span::current()));
         }
 
-        while let Some(page) = self.tasks.join_next().await {
-            let page = page.unwrap();
+        while let Some(task_result) = self.tasks.join_next().await {
+            // If there are any failures log an error and continue.
+            let page = match task_result {
+                Ok(page_result) => match page_result {
+                    Ok(page) => page,
+                    Err(request_error) => {
+                        error!("Failed to reach site: {}", request_error);
+                        continue;
+                    }
+                },
+                Err(join_error) => {
+                    error!("Failed to join task: {}", join_error);
+                    continue;
+                }
+            };
 
             // Check if we have reached the max pages
             if Some(page_count) == self.max_pages {

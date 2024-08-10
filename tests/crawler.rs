@@ -1,5 +1,5 @@
 use http::HeaderValue;
-use monzo_crawler::{CrawlerBuilder, PageContent, SiteVisitor};
+use monzo_crawler::{client_middleware::VisitorError, CrawlerBuilder, PageContent, SiteVisitor};
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, RwLock},
@@ -16,7 +16,7 @@ struct MockUrlVisitor {
 }
 
 impl SiteVisitor for MockUrlVisitor {
-    async fn visit(&mut self, url: Url) -> PageContent {
+    async fn visit(&mut self, url: Url) -> Result<PageContent, VisitorError> {
         // Increment the number of times the URL has been visited
         {
             let mut gaurd = self.visited.write().expect("Could not acquire lock");
@@ -27,7 +27,7 @@ impl SiteVisitor for MockUrlVisitor {
         let content_type: HeaderValue = "text/html".parse().unwrap();
 
         // Route urls to responses.
-        match url.as_str() {
+        let response = match url.as_str() {
             "https://monzo.com/" => PageContent {
                 content: r#"<a href="/about"></a> <a href="/cost"></a>"#.into(),
                 status_code: reqwest::StatusCode::OK,
@@ -53,7 +53,9 @@ impl SiteVisitor for MockUrlVisitor {
                 content_type: Some(content_type),
             },
             _ => panic!("Unexpected URL: {}", url),
-        }
+        };
+
+        Ok(response)
     }
 }
 impl MockUrlVisitor {
