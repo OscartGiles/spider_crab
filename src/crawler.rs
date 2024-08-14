@@ -114,8 +114,17 @@ where
                 }
             };
 
+            // Broadcast the page
+            let _ = self.channel.send(Arc::new(page.clone())); // Ignore errors as we don't care if the receiver is gone
+
+            let mut recovered_links = Vec::new();
+            for link in page.links.iter() {
+                recovered_links.push(link.clone());
+            }
+            pages.push(page);
+
             // Check if we have reached the max pages
-            if Some(page_count) == self.max_pages {
+            if Some(page_count + 1) == self.max_pages {
                 info!("Max pages reached");
                 break;
             }
@@ -131,15 +140,6 @@ where
                     }
                 }
             }
-
-            // Broadcast the page
-            let _ = self.channel.send(Arc::new(page.clone())); // Ignore errors as we don't care if the receiver is gone
-
-            let mut recovered_links = Vec::new();
-            for link in page.links.iter() {
-                recovered_links.push(link.clone());
-            }
-            pages.push(page);
 
             for link in recovered_links {
                 if self.can_visit(&link) {
