@@ -1297,36 +1297,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "monzo_crawler"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "clap",
- "criterion",
- "http",
- "indicatif",
- "opentelemetry",
- "opentelemetry-otlp",
- "opentelemetry_sdk",
- "owo-colors",
- "reqwest",
- "reqwest-middleware",
- "reqwest-retry",
- "reqwest-tracing",
- "scraper",
- "texting_robots",
- "thiserror",
- "tokio",
- "tracing",
- "tracing-opentelemetry",
- "tracing-subscriber",
- "tracing-test",
- "url",
- "wiremock",
-]
-
-[[package]]
 name = "native-tls"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2286,6 +2256,36 @@ checksum = "ce305eb0b4296696835b71df73eb912e0f1ffd2556a501fcede6e0c50349191c"
 dependencies = [
  "libc",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "spider_crab"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "clap",
+ "criterion",
+ "http",
+ "indicatif",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
+ "owo-colors",
+ "reqwest",
+ "reqwest-middleware",
+ "reqwest-retry",
+ "reqwest-tracing",
+ "scraper",
+ "texting_robots",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
+ "tracing-test",
+ "url",
+ "wiremock",
 ]
 
 [[package]]

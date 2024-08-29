@@ -1,4 +1,4 @@
-//! monzo_crawler is a library for crawling websites.
+//! spider_crab is a library for crawling websites.
 //!
 pub mod client_middleware;
 mod crawler;

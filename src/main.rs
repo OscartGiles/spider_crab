@@ -4,7 +4,7 @@ use std::{path::Path, time::Duration};
 use clap::Parser;
 use cli::Cli;
 use indicatif::{MultiProgress, ProgressBar};
-use monzo_crawler::{
+use spider_crab::{
     client_middleware::{MaxConcurrentMiddleware, RetryTooManyRequestsMiddleware},
     AllPages, ClientWithMiddlewareVisitor, CrawlerBuilder,
 };

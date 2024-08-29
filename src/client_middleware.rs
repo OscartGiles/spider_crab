@@ -56,7 +56,7 @@ impl SiteVisitor for ClientWithMiddlewareVisitor {
 /// The following combines [RetryTooManyRequestsMiddleware] with [reqwest_retry::RetryTransientMiddleware] to retry requests.
 /// It will retry as per the [reqwest_retry::RetryTransientMiddleware] but will increase the delay time to respect requests by the server to slow down.
 /// ```rust
-/// use monzo_crawler::client_middleware::RetryTooManyRequestsMiddleware;
+/// use spider_crab::client_middleware::RetryTooManyRequestsMiddleware;
 /// use reqwest_retry::RetryTransientMiddleware;
 /// use reqwest_retry::policies::ExponentialBackoff;
 /// use reqwest_middleware::ClientBuilder;
@@ -66,7 +66,7 @@ impl SiteVisitor for ClientWithMiddlewareVisitor {
 ///
 /// let client = ClientBuilder::new(
 ///  reqwest::Client::builder()
-///    .user_agent("monzo_crawler")
+///    .user_agent("spider_crab")
 ///     .build()
 ///     .unwrap(),
 /// )

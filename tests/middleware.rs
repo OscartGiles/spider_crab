@@ -9,7 +9,7 @@ use reqwest_middleware::ClientBuilder;
 use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
 use tracing::{debug, error};
 
-use monzo_crawler::client_middleware::RetryTooManyRequestsMiddleware;
+use spider_crab::client_middleware::RetryTooManyRequestsMiddleware;
 use tracing_test::traced_test;
 use wiremock::{
     matchers::{method, path},

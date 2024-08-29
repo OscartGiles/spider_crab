@@ -1,5 +1,5 @@
 use http::HeaderValue;
-use monzo_crawler::{CrawlerBuilder, PageContent, SiteVisitor, VisitorError};
+use spider_crab::{CrawlerBuilder, PageContent, SiteVisitor, VisitorError};
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, RwLock},
