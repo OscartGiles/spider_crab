@@ -4,16 +4,16 @@ use std::{path::Path, time::Duration};
 use clap::Parser;
 use cli::Cli;
 use indicatif::{MultiProgress, ProgressBar};
-use spider_crab::{
-    client_middleware::{MaxConcurrentMiddleware, RetryTooManyRequestsMiddleware},
-    AllPages, ClientWithMiddlewareVisitor, CrawlerBuilder,
-};
 use opentelemetry::{trace::TracerProvider as _, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
     runtime::Tokio,
     trace::{Config, TracerProvider},
     Resource,
+};
+use spider_crab::{
+    client_middleware::{MaxConcurrentMiddleware, RetryTooManyRequestsMiddleware},
+    AllPages, ClientWithMiddlewareVisitor, CrawlerBuilder,
 };
 
 use owo_colors::{self, OwoColorize};
@@ -173,7 +173,7 @@ async fn main() -> anyhow::Result<()> {
     let mut rx = crawler.subscribe();
     let url_string = cli.url.clone();
     // Spawn a task to manage progress bar updates
-    let progress_handle = tokio::task::spawn(async move {
+    let progress_handle = tokio::task::spawn_blocking(move || {
         let start = Instant::now();
         let mut count = 0;
 
@@ -188,7 +188,7 @@ async fn main() -> anyhow::Result<()> {
 
         header.set_message(format!("Crawling: {}", url_string.as_str().green()));
 
-        while let Ok(page) = rx.recv().await {
+        while let Ok(page) = rx.blocking_recv() {
             count += 1;
             let duration = start.elapsed();
             let seconds = duration.as_secs() % 60;
