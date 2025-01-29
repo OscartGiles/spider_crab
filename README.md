@@ -10,7 +10,7 @@ I wrote this as part of a coding challenge. Read more about the design decisions
 Make sure you have [Rust](https://www.rust-lang.org/tools/install) installed and then install with:
 
 ```bash
-cargo install --git https://github.com/OscartGiles/spider_crab
+cargo install --git https://github.com/OscartGiles/spider_crab --locked
 ```
 
 ## Usage
