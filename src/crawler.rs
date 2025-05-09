@@ -13,7 +13,7 @@ use tokio::{sync::broadcast, task::JoinSet};
 use tracing::{debug, error, info, Instrument};
 use url::Url;
 
-use crate::parser::{assume_html, parse_links, AllPages, Page};
+use crate::parser::{assume_html, parse_links, AllPages, Page, PageNoContent};
 
 /// An error from ths vistor. Assumes all recoverable errors have been handled and just reporting to caller.
 #[derive(Error, Debug)]
@@ -160,7 +160,16 @@ where
             }
         }
 
-        AllPages(pages)
+        AllPages(
+            pages
+                .into_iter()
+                .map(|page| PageNoContent {
+                    url: page.url,
+                    status_code: page.status_code,
+                    links: page.links,
+                })
+                .collect(),
+        )
     }
 }
 

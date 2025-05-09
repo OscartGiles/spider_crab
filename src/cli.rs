@@ -9,7 +9,7 @@ pub struct Cli {
     /// Root URL to start crawling from.
     pub url: url::Url,
 
-    /// Root URL to start crawling from.
+    /// Provide a directory to write the links to
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 

@@ -15,9 +15,28 @@ pub struct Page {
     pub content: Arc<PageContent>,
 }
 
+/// A page that has been visited by the [Crawler](crate::crawler::Crawler).
+/// Unlike [Page] this only holds metadata and not the page content
+#[derive(Debug, Clone)]
+pub struct PageNoContent {
+    pub url: Url,
+    pub status_code: StatusCode,
+    pub links: HashSet<Url>,
+}
+
+impl From<Page> for PageNoContent {
+    fn from(value: Page) -> Self {
+        PageNoContent {
+            url: value.url,
+            status_code: value.status_code,
+            links: value.links,
+        }
+    }
+}
+
 /// A collection of all [Page]s visited by the [Crawler](crate::crawler::Crawler).
 #[derive(Debug)]
-pub struct AllPages(pub Vec<Page>);
+pub struct AllPages(pub Vec<PageNoContent>);
 
 /// Get all unique links that are from the same domain as the `page_url`.
 /// Excludes any links that do not use http or https scheme.
