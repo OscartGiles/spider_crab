@@ -9,9 +9,13 @@ pub struct Cli {
     /// Root URL to start crawling from.
     pub url: url::Url,
 
-    /// Provide a directory to write the links to
+    /// Provide a file name to write the links to
     #[arg(short, long)]
-    pub output: Option<PathBuf>,
+    pub output_links: Option<PathBuf>,
+
+    /// Provide a directory to write the page content to. The filename will be the url
+    #[arg(short('d'), long)]
+    pub output_content: Option<PathBuf>,
 
     /// Hide links when displaying output.
     #[arg(short('l'), long)]

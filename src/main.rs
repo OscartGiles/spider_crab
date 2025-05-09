@@ -172,6 +172,7 @@ async fn main() -> anyhow::Result<()> {
     // Subscribe to the crawler's broadcast channel. This will allow us to receive progress updates
     let mut rx = crawler.subscribe();
     let url_string = cli.url.clone();
+
     // Spawn a task to manage progress bar updates
     let progress_handle = tokio::task::spawn_blocking(move || {
         let start = Instant::now();
@@ -206,10 +207,44 @@ async fn main() -> anyhow::Result<()> {
         visit_stats.finish_and_clear();
     });
 
-    let res = crawler.crawl(cli.url).await;
-    progress_handle.await?;
+    let file_output_handle = if let Some(outpath) = cli.output_content {
+        let mut rx = crawler.subscribe();
 
-    match &cli.output {
+        let file_output_handle = tokio::spawn(async move {
+            tokio::fs::create_dir(&outpath)
+                .await
+                .expect("A valid path that does not already exist");
+
+            while let Ok(page) = rx.recv().await {
+                let file_name = format!(
+                    "{}-{}-{}.html",
+                    page.url.scheme(),
+                    page.url.domain().expect("A valid domain"),
+                    page.url.path().replace("/", "_")
+                );
+
+                let file_path = outpath.join(file_name);
+                tokio::fs::write(file_path, &page.content.content)
+                    .await
+                    .expect("could not create the file")
+            }
+        });
+
+        Some(file_output_handle)
+    } else {
+        None
+    };
+
+    let res = crawler.crawl(cli.url).await;
+
+    // Its ok to await these after the crawler finishes, at they are Tasks and not Futures
+    if let Some(file_output_handle) = file_output_handle {
+        tokio::try_join!(file_output_handle, progress_handle)?;
+    } else {
+        progress_handle.await?;
+    }
+
+    match &cli.output_links {
         Some(path) => write_links_to_file(&res, path, cli.hide_links).await?,
         None => print_links(&res, cli.hide_links),
     };
