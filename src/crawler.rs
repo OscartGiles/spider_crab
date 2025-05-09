@@ -21,6 +21,7 @@ use crate::parser::{assume_html, parse_links, AllPages, Page};
 pub struct VisitorError(pub anyhow::Error);
 
 /// Contents of a page.
+#[derive(Debug)]
 pub struct PageContent {
     pub url: Url,
     pub status_code: StatusCode,
@@ -67,7 +68,7 @@ where
         debug!("Visiting and parsing {}", url);
         let page_response = site_visitor.visit(url).await?;
 
-        let result = tokio::task::spawn_blocking(move || parse_links(&page_response))
+        let result = tokio::task::spawn_blocking(move || parse_links(Arc::new(page_response)))
             .await
             .expect("Task failed to execute to completion");
 

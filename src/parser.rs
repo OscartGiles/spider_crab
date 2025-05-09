@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fmt::Debug};
+use std::{collections::HashSet, fmt::Debug, sync::Arc};
 
 use reqwest::StatusCode;
 use scraper::{Html, Selector};
@@ -12,6 +12,7 @@ pub struct Page {
     pub url: Url,
     pub status_code: StatusCode,
     pub links: HashSet<Url>,
+    pub content: Arc<PageContent>,
 }
 
 /// A collection of all [Page]s visited by the [Crawler](crate::crawler::Crawler).
@@ -21,7 +22,7 @@ pub struct AllPages(pub Vec<Page>);
 /// Get all unique links that are from the same domain as the `page_url`.
 /// Excludes any links that do not use http or https scheme.
 /// Fragments are not treated as unique links.
-pub fn parse_links(page_content: &PageContent) -> Page {
+pub fn parse_links(page_content: Arc<PageContent>) -> Page {
     let document = Html::parse_document(&page_content.content);
     let selector = Selector::parse("a").expect("Failed to parse selector. This is a bug.");
 
@@ -55,6 +56,7 @@ pub fn parse_links(page_content: &PageContent) -> Page {
         url: page_url,
         status_code: page_content.status_code,
         links,
+        content: page_content,
     }
 }
 
@@ -74,7 +76,7 @@ mod tests {
     use crate::{crawler::PageContent, parser::assume_html};
 
     use super::parse_links;
-    use std::{collections::HashSet, fs};
+    use std::{collections::HashSet, fs, sync::Arc};
     use url::Url;
 
     #[test]
@@ -105,7 +107,7 @@ mod tests {
             content_type: None,
         };
 
-        let links = parse_links(&page).links;
+        let links = parse_links(Arc::new(page)).links;
 
         let expected_links: HashSet<Url> = HashSet::from([
             "https://monzo.com/hi",
@@ -132,7 +134,7 @@ mod tests {
             content_type: None,
         };
 
-        let links = parse_links(&page).links;
+        let links = parse_links(Arc::new(page)).links;
 
         for element in links {
             println!("{}", element.as_str());
