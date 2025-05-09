@@ -61,7 +61,7 @@ where
             && self
                 .robot
                 .as_ref()
-                .map_or(true, |robot| robot.allowed(url.as_str()))
+                .is_none_or(|robot| robot.allowed(url.as_str()))
     }
 
     async fn visit_and_parse(mut site_visitor: V, url: Url) -> Result<Page, VisitorError> {

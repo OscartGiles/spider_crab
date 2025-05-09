@@ -1,4 +1,4 @@
-use monzo_crawler::{parse_links, PageContent};
+use spider_crab::{parse_links, PageContent};
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use std::hint::black_box;

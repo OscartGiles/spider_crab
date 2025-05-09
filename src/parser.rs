@@ -83,7 +83,7 @@ pub(crate) fn assume_html(url: &Url) -> bool {
     let path = url.path();
 
     if path.contains('.') {
-        let suffix = path.split('.').last();
+        let suffix = path.split('.').next_back();
         suffix == Some("html")
     } else {
         true
